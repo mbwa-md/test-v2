@@ -6,7 +6,7 @@ cmd({
     pattern: "ping",
     desc: "Check bot latency",
     category: "general",
-    react: "🔐"
+    react: "😎"
 },
 async(conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply, myquoted }) => {
     try {
@@ -15,7 +15,7 @@ async(conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, send
         const endTime = Date.now();
         const ping = endTime - startTime;
         
-        const pongMessage = `*👑 SILA PONG : ${ping} MS 👑*`;
+        const pongMessage = `*😎 SILA PONG : ${ping} ms*`;
         
         await conn.sendMessage(from, { text: pongMessage }, { quoted: message });
     } catch (e) {
