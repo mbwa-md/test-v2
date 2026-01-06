@@ -13,15 +13,14 @@ cmd({
   pattern: "menu",
   alias: ["help", "allmenu", "m", "list"],
   use: ".menu",
-  desc: "Show all bot commands",
+  desc: "show all bot commands",
   category: "menu",
-  react: "👑",
+  react: "💀",
   filename: __filename
 }, 
-async (conn, mek, m, { from, reply }) => {
+async (conn, mek, m, { from, reply, sender, myquoted }) => {
 
   try {
-    const sender = m.sender || mek.key.participant || 'unknown@s.whatsapp.net';
     const totalCommands = commands.length;
 
     const uptime = () => {
@@ -29,23 +28,22 @@ async (conn, mek, m, { from, reply }) => {
       let h = Math.floor(sec / 3600);
       let mn = Math.floor((sec % 3600) / 60);
       let s = Math.floor(sec % 60);
-      return `${h}H ${mn}M ${s}S`;
+      return `${h}h ${mn}m ${s}s`;
     };
 
     const prefix = config.PREFIX || ".";
     const mode = config.WORK_TYPE?.toUpperCase() || "PUBLIC";
 
-    // Header Design
-    let menu = `*╭━━━〔 BILAL-MD 〕━━━┈⊷*
-*┃  👑 USER :❯ @${sender.split("@")[0]}*
-*┃  👑 MODE :❯ ${mode}*
-*┃  👑 PREFIX :❯ ❮ ${prefix} ❯*
-*┃  👑 COMMANDS :❯ ${totalCommands}*
-*┃  👑 UPTIME :❯ ${uptime()}*
-*┃*
-*╰━━━━━━━━━━━━━━┈⊷*
+    // Menu Header
+    let menu = `╭━━【 💀 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 】━━━━╮
+│ 👤 user: @${sender.split("@")[0]}
+│ ⚙️ mode: ${mode}
+│ ⌨️ prefix: ${prefix}
+│ 📊 commands: ${totalCommands}
+│ ⏱️ uptime: ${uptime()}
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-*HI G 🤗 YE RAHI MERE BOT KI COMMAND LIST* 🌹`;
+*available commands:*`;
 
     // Grouping Categories
     let categories = {};
@@ -62,7 +60,7 @@ async (conn, mek, m, { from, reply }) => {
     for (let cat of sortedCats) {
       const catHeader = toUpper(cat);
 
-      menu += `\n\n╭━━━〔 *${catHeader}* 〕━━━┈⊷\n┃`;
+      menu += `\n\n╭━━【 ${catHeader} 】━━━━╮`;
 
       const cmds = categories[cat]
         .filter(c => c.pattern)
@@ -72,36 +70,48 @@ async (conn, mek, m, { from, reply }) => {
           return nameA.localeCompare(nameB);
         });
 
-      for (let c of cmds) {
-        // Handle pattern if it's an array or string
-        const cmdName = Array.isArray(c.pattern) ? c.pattern[0] : c.pattern.split('|')[0];
-        menu += `\n┃ 👑 ${prefix}${toUpper(cmdName)}`;
+      // Display commands in columns (2 per row)
+      for (let i = 0; i < cmds.length; i += 2) {
+        let row = "\n│ ";
+        const cmd1 = cmds[i];
+        if (cmd1) {
+          const cmdName = Array.isArray(cmd1.pattern) ? cmd1.pattern[0] : cmd1.pattern.split('|')[0];
+          row += `${prefix}${cmdName}`.padEnd(15);
+        }
+        
+        const cmd2 = cmds[i + 1];
+        if (cmd2) {
+          const cmdName2 = Array.isArray(cmd2.pattern) ? cmd2.pattern[0] : cmd2.pattern.split('|')[0];
+          row += `${prefix}${cmdName2}`;
+        }
+        menu += row;
       }
 
-      menu += `\n┃\n╰━━━━━━━━━━━━━━━┈⊷`;
+      menu += `\n╰━━━━━━━━━━━━━━━━━━━━╯`;
     }
 
-    menu += `\n\n*POWERED BY BILAL-MD* 👑`;
+    // Footer
+    menu += `\n\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
 
-    // Send the Menu
+    // Send the Menu with image and context info
     await conn.sendMessage(from, {
-      image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/kunzpz.png' },
+      image: { url: 'https://files.catbox.moe/natk49.jpg' },
       caption: menu,
       contextInfo: {
         mentionedJid: [sender],
         forwardingScore: 999,
         isForwarded: true,
         forwardedNewsletterMessageInfo: {
-          newsletterJid: '120363296818107681@newsletter',
-          newsletterName: 'BILAL-MD WHATSAPP BOT',
-          serverMessageId: 143
+          newsletterJid: '120363402325089913@newsletter',
+          newsletterName: 'MOMY-KIDY',
+          serverMessageId: 13
         }
       }
-    }, { quoted: m });
+    }, { quoted: myquoted });
 
   } catch (e) {
-    console.error("❌ Menu error:", e);
-    reply(`❌ Error generating menu: ${e.message}`);
+    console.error("menu error:", e);
+    reply(`*error generating menu*`);
   }
 
 });
