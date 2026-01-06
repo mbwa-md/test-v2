@@ -4,45 +4,48 @@ const axios = require('axios');
 cmd({
   pattern: "apk",
   alias: ["app", "playstore", "application"],
-  react: "☺️",
-  desc: "Download APK via Aptoide",
+  react: "📱",
+  desc: "download apk via aptoide",
   category: "download",
   use: ".apk <name>",
   filename: __filename
-}, async (conn, mek, m, { from, reply, q }) => {
+}, async (conn, mek, m, { from, reply, q, myquoted }) => {
   try {
-    if (!q) return reply("*AP NE KOI APK DOWNLOAD KARNI HAI 🤔*\n*TO AP ESE LIKHO ☺️*\n\n*APK ❮APK NAME❯*\n\n*JAB AP ESE LIKHO GE 🤗 TO APKI APK DOWNLOAD KAR KE 😃 YAHA PER BHEJNDE JAYE GE 😍🌹*");
+    if (!q) return reply("*provide app name*\nexample: .apk whatsapp");
 
     const apiUrl = `http://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(q)}/limit=1`;
     const { data } = await axios.get(apiUrl);
 
     if (!data || !data.datalist || !data.datalist.list.length) {
-      return reply("*APK NAHI MIL RAHI 😔*");
+      return reply("*app not found*");
     }
 
     const app = data.datalist.list[0];
     const appSize = (app.size / 1048576).toFixed(2);
 
-    let caption = `*╭━━━〔 👑 APK INFO 👑 〕━━━┈⊷*
-*┃ 👑 NAME: ${app.name.toUpperCase()}*
-*┃ 👑 SIZE :❯ ${appSize} MB*
-*┃ 👑 PACK :❯ ${app.package.toUpperCase()}*
-*┃ 👑 VER :❯ ${app.file.vername}*
-*╰━━━━━━━━━━━━━━━┈⊷*
+    let caption = `╭━━【 📱 𝙰𝙿𝙺 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 】━━━━╮
+│ 🏷️ name: *${app.name}*
+│ 📦 size: *${appSize} mb*
+│ 📦 package: *${app.package}*
+│ 🔢 version: *${app.file.vername}*
+│ 📥 downloads: *${app.downloads}*
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-*👑 BY :❯ BILAL-MD 👑*`;
+*downloading...*
 
-    await conn.sendMessage(from, { image: { url: app.icon }, caption }, { quoted: mek });
+> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+
+    await conn.sendMessage(from, { image: { url: app.icon }, caption }, { quoted: myquoted });
 
     await conn.sendMessage(from, {
       document: { url: app.file.path || app.file.path_alt },
       mimetype: "application/vnd.android.package-archive",
-      fileName: `${app.name.toUpperCase()}.apk`
-    }, { quoted: mek });
+      fileName: `${app.name}.apk`
+    }, { quoted: myquoted });
 
-    await m.react("😍");
+    await m.react("✅");
   } catch (err) {
-    reply("*👑 ERROR :❯* TRY AGAIN!");
+    reply("*error downloading app*");
+    console.error(err);
   }
 });
-                   
