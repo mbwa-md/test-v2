@@ -1,9 +1,9 @@
 {
-  "name": "♥️GOLD MD PAIR QR♥️",
+  "name": "🗡️MOMY-KIDY MD🗡️",
   "description": "SESSION ID GENERATOR FOR WHATSAPP BOTS",
-  "logo": "https://i.ibb.co/wspzc9t/IMG-20240328-WA0000.jpg",
+  "logo": "https://files.catbox.moe/natk49.jpg",
   "repository": "https://github.com/1122bot/1X-MINI",
-  "keywords": ["@BiLaLTeCh05"],
+  "keywords": ["MOMY-KIDY BOT"],
   "success_url": "/", 
   "buildpacks": [
     { "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest" }
@@ -11,7 +11,7 @@
   "env": {      
     "MESSAGE": {
       "description": "Msg Attached With Session ID",
-      "value": "🔰 BY || UMAR 🔰",
+      "value": "🔐 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡 🔐",
       "required": false 
     }
   }
