@@ -3,72 +3,81 @@ const config = require('../config');
 const os = require('os');
 
 // =================================================================
-// 🏓 COMMANDE PING (Style Speedtest)
+// ⏱️ COMMANDE UPTIME
 // =================================================================
 cmd({
-    pattern: "Uptime",
-    alias: ["speed"],
-    desc: "Vérifier la latence et les ressources",
+    pattern: "uptime",
+    alias: ["speed", "ping"],
+    desc: "check bot latency and system resources",
     category: "general",
-    react: "👑"
+    react: "💀"
 },
 async(conn, mek, m, { from, reply, myquoted }) => {
     try {
         const start = Date.now();
         
-        // 1. Message d'attente
-        const msg = await conn.sendMessage(from, { text: '*T E S T I N G....*' }, { quoted: myquoted });
+        // Initial message
+        const msg = await conn.sendMessage(from, { text: 'testing...' }, { quoted: myquoted });
         
         const end = Date.now();
         const latency = end - start;
         
-        // 2. Calcul Mémoire (RAM)
+        // Memory calculation
         const totalMem = (os.totalmem() / 1024 / 1024).toFixed(0);
         const freeMem = (os.freemem() / 1024 / 1024).toFixed(0);
         const usedMem = (totalMem - freeMem).toFixed(0);
 
-        // 3. Message Final Stylé
-        const pingMsg = `
-*👑 BILAL-MD UPTIME 👑* ⚡
+        // Uptime calculation
+        const uptime = () => {
+            let sec = process.uptime();
+            let h = Math.floor(sec / 3600);
+            let mn = Math.floor((sec % 3600) / 60);
+            let s = Math.floor(sec % 60);
+            return `${h}h ${mn}m ${s}s`;
+        };
 
-* UPTIME :❯  ${latency}*
+        // Final message
+        const uptimeMsg = `╭━━【 💀 𝚄𝙿𝚃𝙸𝙼𝙴 𝙸𝙽𝙵𝙾 】━━━━╮
+│ ⚡ response: *${latency} ms*
+│ ⏱️ uptime: *${uptime()}*
+│ 🖥️ platform: *${os.platform()}*
+│ 💾 memory: *${usedMem}mb / ${totalMem}mb*
+│ 📊 cpu: *${os.cpus().length} cores*
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-*👑 RAM :❯ ${usedMem}MB / ${totalMem}MB
+> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
 
-`;
-
-        // 4. Édition du message (Effet visuel)
-        await conn.sendMessage(from, { text: pingMsg, edit: msg.key });
+        // Edit message
+        await conn.sendMessage(from, { text: uptimeMsg, edit: msg.key });
 
     } catch (e) {
-        reply("Error: " + e.message);
+        reply("*error checking uptime*");
     }
 });
 
 
 // =================================================================
-// 👑 COMMANDE OWNER (Carte de visite)
+// 👑 COMMANDE OWNER
 // =================================================================
 cmd({
     pattern: "owner",
-    desc: "Contacter le créateur",
+    desc: "contact bot owner",
     category: "general",
-    react: "👑"
+    react: "💀"
 },
 async(conn, mek, m, { from, myquoted }) => {
     const ownerNumber = config.OWNER_NUMBER;
     
-    // Création d'une vCard (Fiche contact)
     const vcard = 'BEGIN:VCARD\n' +
                   'VERSION:3.0\n' +
-                  'FN:bilal (Owner)\n' +
-                  'ORG:bilal Corp;\n' +
+                  'FN:sila tech (owner)\n' +
+                  'ORG:momy-kidy bot;\n' +
                   `TEL;type=CELL;type=VOICE;waid=${ownerNumber}:${ownerNumber}\n` +
                   'END:VCARD';
 
     await conn.sendMessage(from, {
         contacts: {
-            displayName: 'bilal king',
+            displayName: 'sila tech',
             contacts: [{ vcard }]
         }
     }, { quoted: myquoted });
