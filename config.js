@@ -7,41 +7,41 @@ if (fs.existsSync('.env')) {
 
 module.exports = {
     // ===========================================================
-    // 1. CONFIGURATION DE BASE (Session & Database)
+    // 1. BASIC CONFIGURATION (Session & Database)
     // ===========================================================
-    SESSION_ID: process.env.SESSION_ID || "MINI BOT", 
+    SESSION_ID: process.env.SESSION_ID || "MOMY-KIDY", 
     MONGODB_URI: process.env.MONGODB_URI || 'mongodb+srv://kxshrii:i7sgjXF6SO2cTJwU@kelumxz.zggub8h.mongodb.net/',
     
     // ===========================================================
-    // 2. INFORMATIONS DU BOT
+    // 2. BOT INFORMATION
     // ===========================================================
     PREFIX: process.env.PREFIX || '.',
-    OWNER_NUMBER: process.env.OWNER_NUMBER || '+255634060943', // Mettez votre numéro ici
-    BOT_NAME: "BILAL MD",
-    BOT_FOOTER: '© ᴘᴏᴡᴇʀᴇᴅ ʙʏ bilal',
+    OWNER_NUMBER: process.env.OWNER_NUMBER || '255789661031',
+    BOT_NAME: "MOMY-KIDY",
+    BOT_FOOTER: '> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡',
     
-    // Mode de travail : public, private, group, inbox
+    // Work mode: public, private, group, inbox
     WORK_TYPE: process.env.WORK_TYPE || "public", 
     
     // ===========================================================
-    // 3. FONCTIONNALITÉS AUTOMATIQUES (STATUTS)
+    // 3. AUTOMATIC FEATURES (STATUS)
     // ===========================================================
-    AUTO_VIEW_STATUS: process.env.AUTO_VIEW_STATUS || 'true', // Voir automatiquement les statuts
-    AUTO_LIKE_STATUS: process.env.AUTO_LIKE_STATUS || 'true', // Liker automatiquement les statuts
-    AUTO_LIKE_EMOJI: ['❤️', '🌹', '✨', '🥰', '🌹', '😍', '💞', '💕', '☺️', '🤗'], 
+    AUTO_VIEW_STATUS: process.env.AUTO_VIEW_STATUS || 'true', // Automatically view statuses
+    AUTO_LIKE_STATUS: process.env.AUTO_LIKE_STATUS || 'true', // Automatically like statuses
+    AUTO_LIKE_EMOJI: ['🔐', '🔒', '⚡', '💻', '📱', '🔥', '🚀', '🎯', '💾', '🖥️'], 
     
-    AUTO_STATUS_REPLY: process.env.AUTO_STATUS_REPLY || 'false', // Répondre aux statuts
-    AUTO_STATUS_MSG: process.env.AUTO_STATUS_MSG || '🤗', // Message de réponse
-    
-    // ===========================================================
-    // 4. FONCTIONNALITÉS DE CHAT & PRÉSENCE
-    // ===========================================================
-    READ_MESSAGE: process.env.READ_MESSAGE || 'false', // Marquer les messages comme lus (Blue Tick)
-    AUTO_TYPING: process.env.AUTO_TYPING || 'false', // Afficher "Écrit..."
-    AUTO_RECORDING: process.env.AUTO_RECORDING || 'false', // Afficher "Enregistre..."
+    AUTO_STATUS_REPLY: process.env.AUTO_STATUS_REPLY || 'false', // Reply to statuses
+    AUTO_STATUS_MSG: process.env.AUTO_STATUS_MSG || '🖥️', // Reply message
     
     // ===========================================================
-    // 5. GESTION DES GROUPES
+    // 4. CHAT & PRESENCE FEATURES
+    // ===========================================================
+    READ_MESSAGE: process.env.READ_MESSAGE || 'false', // Mark messages as read (Blue Tick)
+    AUTO_TYPING: process.env.AUTO_TYPING || 'false', // Show "Typing..."
+    AUTO_RECORDING: process.env.AUTO_RECORDING || 'false', // Show "Recording..."
+    
+    // ===========================================================
+    // 5. GROUP MANAGEMENT
     // ===========================================================
     WELCOME_ENABLE: process.env.WELCOME_ENABLE || 'true',
     GOODBYE_ENABLE: process.env.GOODBYE_ENABLE || 'true',
@@ -53,22 +53,28 @@ module.exports = {
     GROUP_INVITE_LINK: process.env.GROUP_INVITE_LINK || 'https://chat.whatsapp.com/IdGNaKt80DEBqirc2ek4ks',
     
     // ===========================================================
-    // 6. SÉCURITÉ & ANTI-CALL
+    // 6. SECURITY & ANTI-CALL
     // ===========================================================
-    ANTI_CALL: process.env.ANTI_CALL || 'false', // Rejeter les appels
-    REJECT_MSG: process.env.REJECT_MSG || '*CALL NAHI KARE PLEASE ☺️🌹*',
+    ANTI_CALL: process.env.ANTI_CALL || 'false', // Reject calls
+    REJECT_MSG: process.env.REJECT_MSG || '🔒 NO CALLS ALLOWED 🔒',
     
     // ===========================================================
-    // 7. IMAGES & LIENS
+    // 7. IMAGES & LINKS
     // ===========================================================
-    IMAGE_PATH: 'https://files.catbox.moe/dlvrav.jpg',
-    CHANNEL_LINK: 'https://whatsapp.com/channel/0029VbBmFT430LKO7Ch9C80X',
+    IMAGE_PATH: 'https://files.catbox.moe/natk49.jpg',
+    CHANNEL_LINK: 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02',
+    GROUP_LINK_1: 'https://chat.whatsapp.com/IdGNaKt80DEBqirc2ek4ks',
+    GROUP_LINK_2: 'https://chat.whatsapp.com/C03aOCLQeRUH821jWqRPC6',
     
     // ===========================================================
-    // 8. EXTERNAL API (Optionnel)
+    // 8. CHANNEL JIDS
+    // ===========================================================
+    CHANNEL_JID_1: '120363402325089913@newsletter',
+    CHANNEL_JID_2: '120363422610520277@newsletter',
+    
+    // ===========================================================
+    // 9. EXTERNAL API (Optional)
     // ===========================================================
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '7214172448:AAHGqSgaw-zGVPZWvl8msDOVDhln-9kExas',
-    TELEGRAM_CHAT_ID: process.env.  TELEGRAM_CHAT_ID || '+923078071982'
-    
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '+923078071982'
 };
-  
