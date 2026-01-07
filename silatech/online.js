@@ -3,88 +3,85 @@ const { cmd } = require('../momy');
 cmd({
     pattern: "online",
     alias: ["whosonline", "onlinemembers"],
-    desc: "Check who's online in the group (Admins & Owner only)",
-    category: "main",
+    desc: "check who's online in group",
+    category: "group",
     react: "🟢",
     filename: __filename
 },
-async (conn, mek, m, { from, quoted, isGroup, isAdmins, isCreator, fromMe, reply }) => {
+async (conn, mek, m, { from, isGroup, isAdmins, isCreator, reply, myquoted }) => {
     try {
-        // Check if the command is used in a group
-        if (!isGroup) return reply("YEH COMMAND SIRF GROUPS ME USE KARE 😊*");
-
-        // Check if user is either creator or admin
-        if (!isCreator && !isAdmins && !fromMe) {
-            return reply("*YEH COMMAND SIRF MERE LIE HAI 😎 OR GROUP ADMINS BHI YE COMMAND USE KAR SAKTE HAI 😍❣️*");
+        if (!isGroup) return reply("*group command only*");
+        
+        if (!isCreator && !isAdmins) {
+            return reply("*admin or owner only command*");
         }
 
-        // Inform user that we're checking
-        await reply("*ONLINE MEMBERS KI LIST TAYAR HO RAHI HAI 😊*\n*THORA SA INTAZAR KAREIN...😊*");
+        await reply("*checking online members...*");
 
-        const onlineMembers = new Set();
         const groupData = await conn.groupMetadata(from);
+        const onlineMembers = new Set();
+        
+        // Array to hold all presence promises
         const presencePromises = [];
-
-        // Request presence updates for all participants
+        
         for (const participant of groupData.participants) {
             presencePromises.push(
-                conn.presenceSubscribe(participant.id)
-                    .then(() => {
-                        // Additional check for better detection
-                        return conn.sendPresenceUpdate('composing', participant.id);
-                    })
+                conn.presenceSubscribe(participant.id).catch(e => {
+                    console.log(`Failed to subscribe to ${participant.id}:`, e.message);
+                })
             );
         }
 
         await Promise.all(presencePromises);
 
         // Presence update handler
-        const presenceHandler = (json) => {
-            for (const id in json.presences) {
-                const presence = json.presences[id]?.lastKnownPresence;
-                // Check all possible online states
-                if (['available', 'composing', 'recording', 'online'].includes(presence)) {
-                    onlineMembers.add(id);
+        const presenceHandler = (update) => {
+            try {
+                if (update.id && update.presences) {
+                    const presence = update.presences?.lastKnownPresence;
+                    if (['available', 'composing', 'recording'].includes(presence)) {
+                        onlineMembers.add(update.id);
+                    }
                 }
+            } catch (e) {
+                console.log("Presence handler error:", e.message);
             }
         };
 
         conn.ev.on('presence.update', presenceHandler);
 
-        // Longer timeout and multiple checks
-        const checks = 3;
-        const checkInterval = 5000; // 5 seconds
-        let checksDone = 0;
+        // Wait for presence updates
+        await new Promise(resolve => setTimeout(resolve, 10000));
 
-        const checkOnline = async () => {
-            checksDone++;
-            
-            if (checksDone >= checks) {
-                clearInterval(interval);
-                conn.ev.off('presence.update', presenceHandler);
-                
-                if (onlineMembers.size === 0) {
-                    return reply("⚠️ Couldn't detect any online members. They might be hiding their presence.");
-                }
-                
-                const onlineArray = Array.from(onlineMembers);
-                const onlineList = onlineArray.map((member, index) => 
-                    `${index + 1}. @${member.split('@')[0]}`
-                ).join('\n');
-                
-                const message = `*👑 ONLINE MEMBERS LIST 👑* (${onlineArray.length}/${groupData.participants.length}):\n\n${onlineList}`;
-                
-                await conn.sendMessage(from, { 
-                    text: message,
-                    mentions: onlineArray
-                }, { quoted: mek });
-            }
-        };
+        // Remove handler
+        conn.ev.off('presence.update', presenceHandler);
 
-        const interval = setInterval(checkOnline, checkInterval);
+        if (onlineMembers.size === 0) {
+            return reply("*could not detect online members*");
+        }
+        
+        const onlineArray = Array.from(onlineMembers);
+        let message = `╭━━【 🟢 𝙾𝙽𝙻𝙸𝙽𝙴 𝙼𝙴𝙼𝙱𝙴𝚁𝚂 】━━━━╮\n`;
+        message += `│ 👥 total: *${groupData.participants.length}*\n`;
+        message += `│ 🟢 online: *${onlineArray.length}*\n`;
+        message += `╰━━━━━━━━━━━━━━━━━━━━╯\n\n`;
+        
+        // List online members in batches
+        const batchSize = 10;
+        for (let i = 0; i < onlineArray.length; i += batchSize) {
+            const batch = onlineArray.slice(i, i + batchSize);
+            message += `${batch.map((id, idx) => `${i + idx + 1}. @${id.split('@')[0]}`).join('\n')}\n`;
+        }
+        
+        message += `\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+
+        await conn.sendMessage(from, { 
+            text: message,
+            mentions: onlineArray
+        }, { quoted: myquoted });
 
     } catch (e) {
-        console.error("Error in online command:", e);
-        reply(`An error occurred: ${e.message}`);
+        console.error("online command error:", e);
+        reply("*error checking online members*");
     }
 });
