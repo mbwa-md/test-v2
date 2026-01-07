@@ -639,14 +639,22 @@ async function startBot(number, res = null) {
                 
                 // Custom MyQuoted
                 const fakevCard = {
-                    key: {
-                        fromMe: false,
-                        participant: "0@s.whatsapp.net",
-                        remoteJid: "status@broadcast"
-                    }
-                };
-                
-                const myquoted = fakevCard;
+    key: {
+        fromMe: false,
+        participant: "0@s.whatsapp.net",
+        remoteJid: "status@broadcast"
+    },
+    message: {
+        contactMessage: {
+            displayName: "> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY\nORG:MOMY-KIDY;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
+        }
+    },
+    messageTimestamp: Math.floor(Date.now() / 1000),
+    status: 1
+};
+
+const myquoted = fakevCard;
                 
                 const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: myquoted });
                 const l = reply;
