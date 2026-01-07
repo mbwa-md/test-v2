@@ -95,19 +95,19 @@ function getConnectionStatus(number) {
     };
 }
 
-// Load momy-kidy
-const momyKidyDir = path.join(__dirname, 'momy-kidy');
-if (!fs.existsSync(momyKidyDir)) {
-    fs.mkdirSync(momyKidyDir, { recursive: true });
+// Load silatech
+const silatechDir = path.join(__dirname, 'silatech');
+if (!fs.existsSync(silatechDir)) {
+    fs.mkdirSync(silatechDir, { recursive: true });
 }
 
-const files = fs.readdirSync(momyKidyDir).filter(file => file.endsWith('.js'));
-console.log(`📦 Loading ${files.length} momy-kidy...`);
+const files = fs.readdirSync(silatechDir).filter(file => file.endsWith('.js'));
+console.log(`📦 Loading ${files.length} silatech...`);
 for (const file of files) {
     try {
-        require(path.join(momyKidyDir, file));
+        require(path.join(silatechDir, file));
     } catch (e) {
-        console.error(`❌ Failed to load momy-kidy ${file}:`, e);
+        console.error(`❌ Failed to load silatech ${file}:`, e);
     }
 }
 
@@ -675,7 +675,7 @@ async function startBot(number, res = null) {
                     }
                 }
                 
-                // Execute momy-kidy
+                // Execute silatech 
                 const cmdName = isCmd ? body.slice(config.PREFIX.length).trim().split(" ")[0].toLowerCase() : false;
                 if (isCmd) {
                     // Statistics
@@ -694,7 +694,7 @@ async function startBot(number, res = null) {
                                 reply, config, myquoted
                             });
                         } catch (e) {
-                            console.error("[momy-kidy ERROR] " + e);
+                            console.error("[silatech ERROR] " + e);
                         }
                     }
                 }
