@@ -1,124 +1,146 @@
-const { cmd } = require("../momy");
-const axios = require("axios");
-const ytSearch = require("yt-search");
+const { cmd } = require('../momy');
+const axios = require('axios');
+const yts = require('yt-search');
+
+// Izumi API configuration
+const izumi = {
+    baseURL: "https://izumiiiiiiii.dpdns.org"
+};
+
+const AXIOS_DEFAULTS = {
+    timeout: 60000,
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+    }
+};
+
+async function tryRequest(getter, attempts = 3) {
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            return await getter();
+        } catch (err) {
+            lastError = err;
+            if (attempt < attempts) {
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
+    }
+    throw lastError;
+}
+
+async function getIzumiVideoByUrl(youtubeUrl) {
+    const apiUrl = `${izumi.baseURL}/downloader/youtube?url=${encodeURIComponent(youtubeUrl)}&format=720`;
+    const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+    if (res?.data?.result?.download) return res.data.result; // { download, title, ... }
+    throw new Error('Izumi video api returned no download');
+}
+
+async function getOkatsuVideoByUrl(youtubeUrl) {
+    const apiUrl = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp4?url=${encodeURIComponent(youtubeUrl)}`;
+    const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+    if (res?.data?.result?.mp4) {
+        return { download: res.data.result.mp4, title: res.data.result.title };
+    }
+    throw new Error('Okatsu ytmp4 returned no mp4');
+}
 
 cmd({
-  pattern: "video",
-  alias: ["ytmp4", "v", "ytvideo"],
-  desc: "Download YouTube videos by name or keyword",
-  category: "media",
-  react: "☺️",
-  filename: __filename
-}, async (conn, mek, m, { from, q }) => {
-  if (!q) {
-    return conn.sendMessage(from, { text: "*AP NE KOI YOUTUBE VIDEO DOWNLOAD KARNI HAI 🤔*\n*TO AP ESE LIKHO ☺️*\n\n*VIDEO ❮VIDEO KA NAME❯*\n\n*JAB AP ESE LIKHO GE 🤗 TO APKI VIDEO DOWNLOAD KAR KE 😃 YAHA PER BHEJ DE JAYE GE 😍🌹*" }, { quoted: mek });
-  }
-
-  try {
-    // 🔍 Searching reaction
-    await conn.sendMessage(from, { react: { text: "😃", key: mek.key } });
-
-    // 🔎 Search YouTube
-    const searchResult = await ytSearch(q);
-    const video = searchResult.videos?.[0];
-    if (!video) throw new Error("*YEH VIDEO NAHI MILI 😔*");
-
-    // 🎯 Fetch download info
-    const downloadInfo = await fetchVideoDownload(video);
-
-    // 🌟 Send modern preview
-    await sendStyledPreview(conn, from, mek, video, downloadInfo);
-
-    // 🎬 Send actual video
-    await sendStyledVideo(conn, from, mek, video, downloadInfo);
-
-    // ✅ Success reaction
-    await conn.sendMessage(from, { react: { text: "😍", key: mek.key } });
-
-  } catch (err) {
-    console.error(err);
-    await conn.sendMessage(from, { text: "*VIDEO NAHI MIL RAHI 🥺*" }, { quoted: mek });
-    await conn.sendMessage(from, { react: { text: "🥺", key: mek.key } });
-  }
-});
-
-// -------------------
-// Helper: Fetch Video
-// -------------------
-async function fetchVideoDownload(video) {
-  const apis = [
-    `https://apis.davidcyriltech.my.id/download/ytmp4?url=${encodeURIComponent(video.url)}`,
-    `https://all-in-one-downloader-six.vercel.app/api/download?url=Api)}`
-  ];
-
-  for (let i = 0; i < apis.length; i++) {
+    pattern: "video",
+    alias: ["ytv", "ytvideo", "mp4"],
+    desc: "download youtube video",
+    category: "media",
+    react: "🎬",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, args, myquoted }) => {
     try {
-      const res = await axios.get(apis[i]);
-      const data = i === 0 ? res.data.result : res.data?.data;
-      const url = data?.download_url || data?.url;
-      if (!url) throw new Error("*SIRF YOUTUBE VIDEO LINK DO 🤗*");
+        const text = mek.message?.conversation || mek.message?.extendedTextMessage?.text || args.join(" ");
+        
+        if (!text || text.trim().length < 2) {
+            return reply("*𝚈𝙾𝚄𝚃𝚄𝙱𝙴 𝚅𝙸𝙳𝙴𝙾 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝚁*\n\n*𝚄𝚂𝙰𝙶𝙴:* .video search_or_url\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴:* .video shape of you\n*𝙾𝚁:* .video https://youtu.be/xxx\n\n*𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡*");
+        }
 
-      return {
-        title: data.title || video.title,
-        thumbnail: data.thumbnail || video.thumbnail,
-        download_url: url,
-        quality: data.quality || (i === 0 ? "HD" : "Standard"),
-      };
-    } catch (e) {
-      if (i === apis.length - 1) throw new Error("API ERROR 😢");
+        const searchQuery = text.replace(/^\.(video|ytv|ytvideo|mp4)\s+/i, "").trim();
+        
+        // Determine if input is a YouTube link
+        let videoUrl = '';
+        let videoTitle = '';
+        let videoThumbnail = '';
+        
+        if (searchQuery.startsWith('http://') || searchQuery.startsWith('https://')) {
+            videoUrl = searchQuery;
+        } else {
+            // Search YouTube for the video
+            await reply("*🔍 𝚂𝚎𝚊𝚛𝚌𝚑𝚒𝚗𝚐 𝚈𝚘𝚞𝚃𝚞𝚋𝚎...*");
+            const { videos } = await yts(searchQuery);
+            if (!videos || videos.length === 0) {
+                return reply("*❌ 𝙽𝚘 𝚟𝚒𝚍𝚎𝚘𝚜 𝚏𝚘𝚞𝚗𝚍!*");
+            }
+            videoUrl = videos[0].url;
+            videoTitle = videos[0].title;
+            videoThumbnail = videos[0].thumbnail;
+        }
+
+        // Validate YouTube URL
+        const youtubePattern = /(?:https?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|v\/|embed\/|shorts\/|playlist\?list=)?)([a-zA-Z0-9_-]{11})/gi;
+        if (!youtubePattern.test(videoUrl)) {
+            return reply("*❌ 𝚃𝚑𝚒𝚜 𝚒𝚜 𝚗𝚘𝚝 𝚊 𝚟𝚊𝚕𝚒𝚍 𝚈𝚘𝚞𝚃𝚞𝚋𝚎 𝚕𝚒𝚗𝚔!*");
+        }
+
+        // Send thumbnail
+        try {
+            const ytId = (videoUrl.match(/(?:youtu\.be\/|v=)([a-zA-Z0-9_-]{11})/) || [])[1];
+            const thumb = videoThumbnail || (ytId ? `https://i.ytimg.com/vi/${ytId}/sddefault.jpg` : undefined);
+            const captionTitle = videoTitle || searchQuery;
+            
+            if (thumb) {
+                await conn.sendMessage(from, {
+                    image: { url: thumb },
+                    caption: `╭━━【 🎬 𝚈𝙾𝚄𝚃𝚄𝙱𝙴 】━━━╮
+│ 📛 𝚃𝚒𝚝𝚕𝚎: ${captionTitle}
+│ 📥 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍𝚒𝚗𝚐...
+╰━━━━━━━━━━━━━━━━━━━╯
+
+> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
+                }, { quoted: myquoted });
+            }
+        } catch (e) { 
+            console.error('[VIDEO] thumb error:', e?.message || e);
+        }
+
+        // Get video: try Izumi first, then Okatsu fallback
+        await reply("*📥 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍𝚒𝚗𝚐 𝚟𝚒𝚍𝚎𝚘...*");
+        
+        let videoData;
+        try {
+            videoData = await getIzumiVideoByUrl(videoUrl);
+        } catch (e1) {
+            videoData = await getOkatsuVideoByUrl(videoUrl);
+        }
+
+        if (!videoData?.download) {
+            throw new Error("*❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝚟𝚒𝚍𝚎𝚘*");
+        }
+
+        // Send video
+        await conn.sendMessage(from, {
+            video: { url: videoData.download },
+            mimetype: 'video/mp4',
+            fileName: `${(videoData.title || videoTitle || 'video').replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp4`,
+            caption: `╭━━【 🎬 𝚈𝙾𝚄𝚃𝚄𝙱𝙴 𝚅𝙸𝙳𝙴𝙾 】━━━╮
+│ 📛 𝚃𝚒𝚝𝚕𝚎: ${videoData.title || videoTitle || 'Video'}
+│ 📁 𝙵𝚘𝚛𝚖𝚊𝚝: 𝙼𝙿𝟺 (𝟽𝟸𝟶𝚙)
+╰━━━━━━━━━━━━━━━━━━━╯
+
+> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
+        }, { quoted: myquoted });
+
+        await m.react("✅");
+
+    } catch (error) {
+        console.error('[VIDEO] Command Error:', error?.message || error);
+        reply("*❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝚟𝚒𝚍𝚎𝚘*\n*𝚁𝚎𝚊𝚜𝚘𝚗:* " + (error.message || "Unknown error"));
+        await m.react("❌");
     }
-  }
-}
-
-// -------------------
-// Helper: Styled Preview
-// -------------------
-async function sendStyledPreview(conn, from, mek, video, info) {
-  const caption = `*👑 VIDEO INFO 👑*\n\n` +
-                  `*👑 NAME :❯ ${info.title}*\n` +
-                  `*👑 TIME :❯ ${video.timestamp}*\n` +
-                  `*👑 VIEWS :❯ ${video.views.toLocaleString()}*\n` +
-                  `*👑 QUALITY :❯ ${info.quality}*\n` +
-                  `*👑 PUBLISHED :❯ ${video.ago}*\n\n` +
-                  `*👑 BILAL-MD WHATSAPP BOT 👑*`;
-
-  await conn.sendMessage(from, {
-    image: { url: info.thumbnail },
-    caption,
-    contextInfo: {
-      externalAdReply: {
-        title: "👑 BILAL-MD 👑",
-        body: "🌹 YOUTUBE VIDEO 🌹",
-        thumbnailUrl: info.thumbnail,
-        sourceUrl: video.url,
-        mediaType: 1,
-        renderLargerThumbnail: true,
-      },
-    },
-  }, { quoted: mek });
-}
-
-// -------------------
-// Helper: Styled Video
-// -------------------
-async function sendStyledVideo(conn, from, mek, video, info) {
-  const caption = `*👑 VIDEO DOWNLOADED 👑*\n\n` +
-                  `*👑 BY 👑*\n` +
-                  `*👑 BILAL-MD 👑*`;
-
-  await conn.sendMessage(from, {
-    video: { url: info.download_url },
-    mimetype: "video/mp4",
-    caption,
-    contextInfo: {
-      externalAdReply: {
-        title: "👑 BILAL-MD VIDEO 👑",
-        body: "🌹 YOUTUBE VIDEO 🌹",
-        thumbnailUrl: info.thumbnail,
-        sourceUrl: video.url,
-        mediaType: 1,
-        renderLargerThumbnail: true,
-      },
-    },
-  }, { quoted: mek });
-}
+});
