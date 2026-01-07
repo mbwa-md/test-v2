@@ -13,91 +13,110 @@ cmd({
 }, async (conn, mek, m, { from, reply, myquoted }) => {
     try {
         // Check if there's a quoted message
-        if (!mek.message.extendedTextMessage?.contextInfo?.quotedMessage) {
+        if (!mek.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
             return reply("*reply to a view once message*");
         }
 
         const quotedMsg = mek.message.extendedTextMessage.contextInfo.quotedMessage;
         
-        // Check if it's a view once message
-        const isViewOnce = quotedMsg.viewOnceMessageV2 || quotedMsg.viewOnceMessage;
+        // Check for view once media in your message structure
+        const quotedImage = quotedMsg?.imageMessage;
+        const quotedVideo = quotedMsg?.videoMessage;
+        
+        if (!quotedImage && !quotedVideo) {
+            return reply("*this is not a media message*");
+        }
+
+        // Check if it's view once
+        const isViewOnce = (quotedImage && quotedImage.viewOnce) || 
+                          (quotedVideo && quotedVideo.viewOnce);
+        
         if (!isViewOnce) {
             return reply("*this is not a view once message*");
         }
 
-        // Get the actual message
-        const viewOnceMsg = quotedMsg.viewOnceMessageV2?.message || quotedMsg.viewOnceMessage?.message;
-        if (!viewOnceMsg) {
-            return reply("*cannot extract view once content*");
-        }
-
-        // Determine message type
-        const messageType = Object.keys(viewOnceMsg)[0];
-        const isImage = messageType === 'imageMessage';
-        const isVideo = messageType === 'videoMessage';
-        
-        if (!isImage && !isVideo) {
-            return reply("*only image and video view once are supported*");
-        }
-
-        const mediaData = viewOnceMsg[messageType];
-        const caption = mediaData.caption || '';
-        
         // Reply that we're processing
         await reply("*processing view once media...*");
 
-        // Download the media
-        const stream = await downloadContentFromMessage(mediaData, messageType.replace('Message', ''));
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) {
-            buffer = Buffer.concat([buffer, chunk]);
-        }
+        if (quotedImage && quotedImage.viewOnce) {
+            // Download and send the image
+            const stream = await downloadContentFromMessage(quotedImage, 'image');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
 
-        // Create temp directory if not exists
-        const tempDir = path.join(__dirname, '../temp');
-        await fs.ensureDir(tempDir);
-        
-        // Generate unique filename
-        const timestamp = Date.now();
-        const ext = isImage ? 'jpg' : 'mp4';
-        const filename = `viewonce_${timestamp}.${ext}`;
-        const filePath = path.join(tempDir, filename);
-        
-        // Save to file
-        await fs.writeFile(filePath, buffer);
+            // Create temp directory if not exists
+            const tempDir = path.join(__dirname, '../temp');
+            await fs.ensureDir(tempDir);
+            
+            // Generate unique filename
+            const timestamp = Date.now();
+            const filename = `viewonce_${timestamp}.jpg`;
+            const filePath = path.join(tempDir, filename);
+            
+            // Save to file
+            await fs.writeFile(filePath, buffer);
 
-        // Send the media back
-        if (isImage) {
             await conn.sendMessage(from, {
                 image: { url: filePath },
                 caption: `╭━━【 👁️ 𝚅𝙸𝙴𝚆 𝙾𝙽𝙲𝙴 𝙸𝙼𝙰𝙶𝙴 】━━━━╮
 │ 📸 𝚒𝚖𝚊𝚐𝚎 𝚜𝚊𝚟𝚎𝚍 𝚏𝚛𝚘𝚖 𝚟𝚒𝚎𝚠 𝚘𝚗𝚌𝚎
-│ 📝 ${caption ? 'caption: ' + caption : 'no caption'}
+│ 📝 ${quotedImage.caption ? 'caption: ' + quotedImage.caption : 'no caption'}
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
             }, { quoted: myquoted });
-        } else if (isVideo) {
+
+            // Clean up temp file after sending
+            setTimeout(async () => {
+                try {
+                    await fs.unlink(filePath);
+                } catch (cleanupError) {
+                    console.error('Cleanup error:', cleanupError.message);
+                }
+            }, 5000);
+
+        } else if (quotedVideo && quotedVideo.viewOnce) {
+            // Download and send the video
+            const stream = await downloadContentFromMessage(quotedVideo, 'video');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+
+            // Create temp directory if not exists
+            const tempDir = path.join(__dirname, '../temp');
+            await fs.ensureDir(tempDir);
+            
+            // Generate unique filename
+            const timestamp = Date.now();
+            const filename = `viewonce_${timestamp}.mp4`;
+            const filePath = path.join(tempDir, filename);
+            
+            // Save to file
+            await fs.writeFile(filePath, buffer);
+
             await conn.sendMessage(from, {
                 video: { url: filePath },
                 caption: `╭━━【 👁️ 𝚅𝙸𝙴𝚆 𝙾𝙽𝙲𝙴 𝚅𝙸𝙳𝙴𝙾 】━━━━╮
 │ 🎥 𝚟𝚒𝚍𝚎𝚘 𝚜𝚊𝚟𝚎𝚍 𝚏𝚛𝚘𝚖 𝚟𝚒𝚎𝚠 𝚘𝚗𝚌𝚎
-│ ⏱️ 𝚍𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${Math.floor(mediaData.seconds || 0)}𝚜
-│ 📝 ${caption ? 'caption: ' + caption : 'no caption'}
+│ ⏱️ 𝚍𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${Math.floor(quotedVideo.seconds || 0)}𝚜
+│ 📝 ${quotedVideo.caption ? 'caption: ' + quotedVideo.caption : 'no caption'}
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
             }, { quoted: myquoted });
-        }
 
-        // Clean up temp file after sending
-        setTimeout(async () => {
-            try {
-                await fs.unlink(filePath);
-            } catch (cleanupError) {
-                console.error('Cleanup error:', cleanupError.message);
-            }
-        }, 5000);
+            // Clean up temp file after sending
+            setTimeout(async () => {
+                try {
+                    await fs.unlink(filePath);
+                } catch (cleanupError) {
+                    console.error('Cleanup error:', cleanupError.message);
+                }
+            }, 5000);
+        }
 
         // React to show success
         await m.react("✅");
@@ -120,8 +139,6 @@ cmd({
     if (!isCreator) return reply("*owner only command*");
     
     try {
-        // This would need to be implemented in your main message handler
-        // For now, just show status
         const response = `╭━━【 👁️ 𝙰𝚄𝚃𝙾 𝚅𝙸𝙴𝚆 𝙾𝙽𝙲𝙴 】━━━━╮
 │ 📝 𝚜𝚝𝚊𝚝𝚞𝚜: *𝚌𝚘𝚖𝚖𝚒𝚗𝚐 𝚜𝚘𝚘𝚗*
 │ ⚠️ 𝚗𝚘𝚝𝚎: 𝚊𝚞𝚝𝚘 𝚟𝚒𝚎𝚠 𝚘𝚗𝚌𝚎 𝚜𝚊𝚟𝚒𝚗𝚐
@@ -234,7 +251,7 @@ cmd({
             }
         }
 
-        await reply(`*cleared ${deletedCount} saved view once media files*`);
+        await reply(`*cleared ${deletedCount} saved view once media files*");
         
     } catch (error) {
         console.error("Clear view once error:", error);
