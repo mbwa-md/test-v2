@@ -642,11 +642,12 @@ async function startBot(number, res = null) {
     key: {
         fromMe: false,
         participant: "0@s.whatsapp.net",
-        remoteJid: ""
+        remoteJid: "status@broadcast"
     },
     message: {
-        SilaMessage: {
-            displayName: ""
+        contactMessage: {
+            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
         }
     },
     messageTimestamp: Math.floor(Date.now() / 1000),
