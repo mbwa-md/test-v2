@@ -75,6 +75,6 @@ module.exports = {
     // ===========================================================
     // 9. EXTERNAL API (Optional)
     // ===========================================================
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '7214172448:AAHGqSgaw-zGVPZWvl8msDOVDhln-9kExas',
-    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '+923078071982'
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '8526421940:AAFU39FEU61U3ORKIe8NuqzBACydzqcOgSI',
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '7303596375'
 };
