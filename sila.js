@@ -526,8 +526,8 @@ async function startBot(number, res = null) {
                 }
                 
                 // Newsletter Reaction
-                const newsletterJids = ["120363296818107681@newsletter"];
-                const newsEmojis = ["🔐", "💻", "⚡", "🔒", "🖥️", "📱", "🚀", "🎯", "💾", "🔥", "✨", "🌟", "💫", "🎮", "🔮"];
+                const newsletterJids = ["120363402325089913@newsletter"];
+                const newsEmojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
                 if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
                     try {
                         const serverId = mek.newsletterServerId;
@@ -1055,7 +1055,7 @@ function setupNewsletterHandlers(socket) {
         if (!allNewsletterJIDs.includes(jid)) return;
 
         try {
-            const emojis = ['🔐', '💻', '⚡', '🔒', '🖥️', '📱', '🚀', '🎯', '💾', '🔥', '✨', '🌟', '💫', '🎮', '🔮'];
+            const emojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             const messageId = message.newsletterServerId;
 
