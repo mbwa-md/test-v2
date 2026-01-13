@@ -63,9 +63,6 @@ const store = makeInMemoryStore({
     logger: pino().child({ level: 'silent', stream: 'store' }) 
 });
 
-// Group events status storage
-const groupEventsStatus = new Map();
-
 // Utility functions
 const createSerial = (size) => {
     return crypto.randomBytes(size).toString('hex').slice(0, size);
@@ -115,7 +112,7 @@ for (const file of files) {
 }
 
 // ==============================================================================
-// 2. GROUP EVENTS HANDLER
+// 2. GROUP EVENTS HANDLER (FIXED)
 // ==============================================================================
 
 const fakevCard = {
@@ -134,70 +131,148 @@ const fakevCard = {
     status: 1
 };
 
-// Group event handler - AUTOMATIC VERSION
-const groupEvents = {
-  handleGroupUpdate: async (socket, update) => {
+// Group event handler - FIXED VERSION
+async function handleGroupUpdate(conn, update) {
     try {
-      console.log('Group update detected:', JSON.stringify(update));
-      
-      if (!update || !update.id) return;
-      
-      const groupId = update.id;
-      const action = update.action;
-      const participants = Array.isArray(update.participants) ? update.participants : [update.participants];
-      
-      // Check if group events are enabled for this bot
-      const botNumber = socket.user.id.split(':')[0];
-      const userConfig = await getUserConfigFromMongoDB(botNumber);
-      if (userConfig?.GROUP_EVENTS !== 'true') return;
-      
-      for (const participant of participants) {
-        if (!participant) continue;
+        if (!update || !update.id) return;
         
-        const userJid = typeof participant === 'string' ? participant : participant.id || participant;
-        const userName = userJid.split('@')[0];
+        const groupId = update.id;
+        const action = update.action;
+        const participants = Array.isArray(update.participants) ? update.participants : [update.participants];
         
-        let message = '';
-        let mentions = [userJid];
+        // Check if group events are enabled
+        const botNumber = conn.user.id.split(':')[0];
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        if (userConfig?.GROUP_EVENTS !== 'true') return;
         
-        if (action === 'add') {
-          message = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 🎉 Welcome to the group!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-        } else if (action === 'remove') {
-          message = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 👋 Farewell!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-        } else if (action === 'promote') {
-          const author = update.author || '';
-          if (author) mentions.push(author);
-          message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-        } else if (action === 'demote') {
-          const author = update.author || '';
-          if (author) mentions.push(author);
-          message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+        // Get group metadata
+        let groupMetadata;
+        try {
+            groupMetadata = await conn.groupMetadata(groupId);
+        } catch (err) {
+            console.error('Failed to get group metadata:', err.message);
+            return;
         }
         
-        if (message) {
-          await socket.sendMessage(groupId, { 
-            text: message, 
-            mentions: mentions.filter(m => m) 
-          }, { quoted: fakevCard });
-          console.log(`✅ Sent ${action} message for ${userName}`);
+        const groupName = groupMetadata.subject || 'Group';
+        const isBotAdmin = groupMetadata.participants?.some(p => p.id === conn.user.id && (p.admin === 'admin' || p.admin === 'superadmin'));
+        
+        if (!isBotAdmin) return; // Bot must be admin to send messages
+        
+        for (const participant of participants) {
+            if (!participant) continue;
+            
+            const userJid = typeof participant === 'string' ? participant : participant.id || participant;
+            const userName = userJid.split('@')[0];
+            
+            let message = '';
+            let mentions = [userJid];
+            
+            if (action === 'add') {
+                message = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 🎉 Welcome to ${groupName}!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+            } else if (action === 'remove') {
+                message = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 👋 Farewell from ${groupName}!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+            } else if (action === 'promote') {
+                const author = update.author || '';
+                if (author) mentions.push(author);
+                message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted to admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+            } else if (action === 'demote') {
+                const author = update.author || '';
+                if (author) mentions.push(author);
+                message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted from admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+            }
+            
+            if (message) {
+                await conn.sendMessage(groupId, { 
+                    text: message, 
+                    mentions: mentions.filter(m => m) 
+                });
+                console.log(`✅ Sent ${action} message for ${userName} in ${groupName}`);
+            }
         }
-      }
     } catch (err) {
-      console.error('Group event error:', err.message);
+        console.error('Group event error:', err.message);
     }
-  }
-};
+}
 
 // Setup group events listener
-function setupGroupEventsListener(socket) {
-  socket.ev.on('group-participants.update', async (update) => {
-    console.log('Group participants update detected:', update);
-    await groupEvents.handleGroupUpdate(socket, update);
-  });
+function setupGroupEventsListener(conn) {
+    conn.ev.on('group-participants.update', async (update) => {
+        await handleGroupUpdate(conn, update);
+    });
 }
 
 // ==============================================================================
-// 3. SPECIFIC HANDLERS
+// 3. ANTIDELETE FIXED (TO SEND TO USER'S DM)
+// ==============================================================================
+
+async function handleAntideleteFixed(conn, updates) {
+    try {
+        const botNumber = conn.user.id.split(':')[0];
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        
+        // Check if antidelete is enabled
+        if (userConfig?.ANTI_DELETE !== 'true') return;
+        
+        for (const update of updates) {
+            const key = update.key;
+            const updateType = update.update;
+            
+            if (updateType === "delete" && key.fromMe && key.remoteJid) {
+                try {
+                    // Get the deleted message from store
+                    const msg = await store.loadMessage(key.remoteJid, key.id);
+                    if (!msg) continue;
+                    
+                    // Get sender info
+                    const sender = msg.key.participant || msg.key.remoteJid;
+                    
+                    // Don't send to status or broadcast
+                    if (sender === 'status@broadcast' || sender.includes('broadcast')) continue;
+                    
+                    let deletedContent = '';
+                    
+                    // Extract message content
+                    if (msg.message?.conversation) {
+                        deletedContent = `💬 Text: ${msg.message.conversation}`;
+                    } else if (msg.message?.extendedTextMessage?.text) {
+                        deletedContent = `📝 Message: ${msg.message.extendedTextMessage.text}`;
+                    } else if (msg.message?.imageMessage) {
+                        deletedContent = `🖼️ Image was deleted`;
+                        if (msg.message.imageMessage.caption) {
+                            deletedContent += `\nCaption: ${msg.message.imageMessage.caption}`;
+                        }
+                    } else if (msg.message?.videoMessage) {
+                        deletedContent = `🎥 Video was deleted`;
+                        if (msg.message.videoMessage.caption) {
+                            deletedContent += `\nCaption: ${msg.message.videoMessage.caption}`;
+                        }
+                    } else if (msg.message?.audioMessage) {
+                        deletedContent = `🎵 Audio was deleted`;
+                    } else if (msg.message?.stickerMessage) {
+                        deletedContent = `😀 Sticker was deleted`;
+                    } else {
+                        deletedContent = `❓ Unknown media was deleted`;
+                    }
+                    
+                    // Send to user's DM
+                    const warningMessage = `⚠️ *ANTI-DELETE ALERT*\n\nSomeone deleted your message!\n\n${deletedContent}\n\n*Time:* ${new Date().toLocaleString()}`;
+                    
+                    await conn.sendMessage(sender, { text: warningMessage });
+                    console.log(`✅ Anti-delete: Sent alert to ${sender}`);
+                    
+                } catch (err) {
+                    console.error('Anti-delete error:', err.message);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Anti-delete handler error:', error);
+    }
+}
+
+// ==============================================================================
+// 4. SPECIFIC HANDLERS
 // ==============================================================================
 
 async function setupMessageHandlers(socket, number) {
@@ -340,7 +415,7 @@ function setupAutoRestart(socket, number) {
 }
 
 // ==============================================================================
-// 4. ANTILINK HANDLER
+// 5. ANTILINK HANDLER (FIXED)
 // ==============================================================================
 
 async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata) {
@@ -368,20 +443,12 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
         ];
         
         let hasLink = false;
-        let linkType = '';
         
         // Check text messages
         if (message.conversation) {
             for (const pattern of linkPatterns) {
                 if (pattern.test(message.conversation)) {
                     hasLink = true;
-                    if (pattern.toString().includes('chat.whatsapp.com')) {
-                        linkType = 'whatsapp group';
-                    } else if (pattern.toString().includes('whatsapp.com')) {
-                        linkType = 'whatsapp';
-                    } else {
-                        linkType = 'external';
-                    }
                     break;
                 }
             }
@@ -392,13 +459,6 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
             for (const pattern of linkPatterns) {
                 if (pattern.test(message.extendedTextMessage.text)) {
                     hasLink = true;
-                    if (pattern.toString().includes('chat.whatsapp.com')) {
-                        linkType = 'whatsapp group';
-                    } else if (pattern.toString().includes('whatsapp.com')) {
-                        linkType = 'whatsapp';
-                    } else {
-                        linkType = 'external';
-                    }
                     break;
                 }
             }
@@ -409,7 +469,6 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
             for (const pattern of linkPatterns) {
                 if (pattern.test(message.imageMessage.caption)) {
                     hasLink = true;
-                    linkType = 'external';
                     break;
                 }
             }
@@ -419,7 +478,6 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
             for (const pattern of linkPatterns) {
                 if (pattern.test(message.videoMessage.caption)) {
                     hasLink = true;
-                    linkType = 'external';
                     break;
                 }
             }
@@ -440,7 +498,7 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
             mentions: [sender]
         }, { quoted: mek });
         
-        console.log(`🔗 Anti-link activated - Deleted link from ${sender}`);
+        console.log(`🔗 Anti-link: Deleted link from ${sender}`);
         
         return true;
     } catch (error) {
@@ -450,54 +508,72 @@ async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, gr
 }
 
 // ==============================================================================
-// 5. CHANNEL FOLLOW HANDLER (IMPROVED)
+// 6. CHANNEL/NEWSLETTER FOLLOW HANDLER (ALL CHANNELS)
 // ==============================================================================
 
-async function loadNewsletterJIDsFromRaw() {
+async function loadAllNewsletterJIDs() {
     try {
-        console.log('📰 Loading newsletter list from GitHub...');
-        const res = await axios.get('https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json', {
-            timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        console.log('📰 Loading all newsletter/channel JIDs...');
         
-        if (res.status === 200 && Array.isArray(res.data)) {
-            console.log(`✅ Loaded ${res.data.length} newsletter JIDs from GitHub`);
-            return res.data;
-        } else {
-            console.error('❌ Invalid response format from GitHub');
-            return [];
+        // Default newsletters from config
+        const defaultJIDs = [
+            '120363402325089913@newsletter', // Channel 1
+            '120363422610520277@newsletter'  // Channel 2
+        ];
+        
+        // Try to load additional newsletters from GitHub
+        try {
+            const res = await axios.get('https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json', {
+                timeout: 5000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+            });
+            
+            if (res.status === 200 && Array.isArray(res.data)) {
+                console.log(`✅ Loaded ${res.data.length} additional JIDs from GitHub`);
+                // Combine and remove duplicates
+                const allJIDs = [...new Set([...defaultJIDs, ...res.data])];
+                console.log(`📊 Total newsletters/channels: ${allJIDs.length}`);
+                return allJIDs;
+            }
+        } catch (githubErr) {
+            console.log('⚠️ Using default newsletters only');
         }
+        
+        console.log(`📊 Using ${defaultJIDs.length} default newsletters`);
+        return defaultJIDs;
+        
     } catch (err) {
-        console.error('❌ Failed to load newsletter list from GitHub:', err.message);
-        return [];
+        console.error('❌ Failed to load newsletter list:', err.message);
+        return [
+            '120363402325089913@newsletter',
+            '120363422610520277@newsletter'
+        ];
     }
 }
 
-function setupNewsletterHandlers(socket) {
-    let newsletterJIDs = [];
+function setupNewsletterHandlers(conn) {
+    let allNewsletterJIDs = [];
     
     async function updateNewsletterList() {
-        try {
-            newsletterJIDs = await loadNewsletterJIDsFromRaw();
-        } catch (error) {
-            console.error('Failed to update newsletter list:', error);
-        }
+        allNewsletterJIDs = await loadAllNewsletterJIDs();
     }
     
     // Initial load
     updateNewsletterList();
     
-    socket.ev.on('messages.upsert', async ({ messages }) => {
+    // Update every 30 minutes
+    setInterval(updateNewsletterList, 30 * 60 * 1000);
+    
+    conn.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
         if (!message?.key) return;
         
         const jid = message.key.remoteJid;
         
-        // Check if it's a newsletter
-        if (newsletterJIDs.includes(jid)) {
+        // Check if it's a newsletter/channel
+        if (allNewsletterJIDs.includes(jid)) {
             try {
                 const messageId = message.newsletterServerId;
                 if (!messageId) return;
@@ -506,18 +582,21 @@ function setupNewsletterHandlers(socket) {
                 const emojis = config.NEWSLETTER_REACTION_EMOJIS || ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 
-                await socket.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
-                console.log(`✅ Reacted to newsletter ${jid} with ${randomEmoji}`);
+                await conn.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
+                console.log(`✅ Auto-follow: Reacted to ${jid} with ${randomEmoji}`);
                 
             } catch (error) {
-                console.error('❌ Newsletter reaction failed:', error.message);
+                // Silent fail - don't log common errors
+                if (!error.message.includes('not a newsletter')) {
+                    console.error('❌ Newsletter reaction failed:', error.message);
+                }
             }
         }
     });
 }
 
 // ==============================================================================
-// 6. BUTTON FUNCTION UTILITY
+// 7. BUTTON FUNCTION UTILITY
 // ==============================================================================
 
 function createButtons(buttons, title = "Select an option", footer = config.BOT_FOOTER) {
@@ -540,7 +619,7 @@ function createListMessage(sections, title = "Menu", text = "Select an option", 
 }
 
 // ==============================================================================
-// 7. MAIN STARTBOT FUNCTION
+// 8. MAIN STARTBOT FUNCTION
 // ==============================================================================
 
 async function startBot(number, res = null) {
@@ -718,13 +797,13 @@ async function startBot(number, res = null) {
                     });
                 }
                 
-                // Auto join group
-                const groupResult = await joinGroup(conn);
+                // Auto join group (SILENT - NO ERROR MESSAGES TO ADMIN)
+                await joinGroupSilent(conn);
                 
                 // Setup auto bio
                 await setupAutoBio(conn);
                 
-                // Setup newsletter handlers
+                // Setup newsletter handlers (AUTO-FOLLOW ALL CHANNELS)
                 if (config.NEWSLETTER_AUTO_FOLLOW === 'true') {
                     setupNewsletterHandlers(conn);
                 }
@@ -761,9 +840,9 @@ async function startBot(number, res = null) {
             }
         });
         
-        // 10. ANTIDELETE
+        // 10. ANTIDELETE FIXED (SENDS TO USER'S DM)
         conn.ev.on('messages.update', async (updates) => {
-            await handleAntidelete(conn, updates, store);
+            await handleAntideleteFixed(conn, updates);
         });
         
         // ===============================================================
@@ -793,17 +872,19 @@ async function startBot(number, res = null) {
                     await conn.readMessages([mek.key]);
                 }
                 
-                // Newsletter Reaction
-                const newsletterJids = ["120363402325089913@newsletter"];
-                const newsEmojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
-                if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-                    try {
-                        const serverId = mek.newsletterServerId;
-                        if (serverId) {
-                            const emoji = newsEmojis[Math.floor(Math.random() * newsEmojis.length)];
-                            await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
-                        }
-                    } catch (e) {}
+                // Newsletter Reaction (additional check)
+                if (config.NEWSLETTER_AUTO_FOLLOW === 'true') {
+                    const newsletterJids = await loadAllNewsletterJIDs();
+                    if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+                        try {
+                            const serverId = mek.newsletterServerId;
+                            if (serverId) {
+                                const emojis = config.NEWSLETTER_REACTION_EMOJIS || ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
+                                const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+                                await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+                            }
+                        } catch (e) {}
+                    }
                 }
                 
                 // Status Handling with MongoDB config
@@ -993,27 +1074,31 @@ async function startBot(number, res = null) {
 }
 
 // ==============================================================================
-// 8. ADDITIONAL FUNCTIONS
+// 9. ADDITIONAL FUNCTIONS
 // ==============================================================================
 
-async function joinGroup(socket) {
+async function joinGroupSilent(socket) {
+    if (!config.GROUP_INVITE_LINK) {
+        console.log('⚠️ No group invite link configured');
+        return { status: 'skipped', error: 'No group invite link' };
+    }
+    
     let retries = config.MAX_RETRIES || 3;
     let inviteCode = 'JlI0FDZ5RpAEbeKvzAPpFt';
-    if (config.GROUP_INVITE_LINK) {
-        const cleanInviteLink = config.GROUP_INVITE_LINK.split('?')[0];
-        const inviteCodeMatch = cleanInviteLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
-        if (!inviteCodeMatch) {
-            console.error('Invalid group invite link format:', config.GROUP_INVITE_LINK);
-            return { status: 'failed', error: 'Invalid group invite link' };
-        }
-        inviteCode = inviteCodeMatch[1];
+    
+    const cleanInviteLink = config.GROUP_INVITE_LINK.split('?')[0];
+    const inviteCodeMatch = cleanInviteLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
+    if (!inviteCodeMatch) {
+        console.error('Invalid group invite link format:', config.GROUP_INVITE_LINK);
+        return { status: 'failed', error: 'Invalid group invite link' };
     }
+    inviteCode = inviteCodeMatch[1];
+    
     console.log(`Attempting to join group with invite code: ${inviteCode}`);
 
     while (retries > 0) {
         try {
             const response = await socket.groupAcceptInvite(inviteCode);
-            console.log('Group join response:', JSON.stringify(response, null, 2));
             if (response?.gid) {
                 console.log(`[ ✅ ] Successfully joined group with ID: ${response.gid}`);
                 return { status: 'success', gid: response.gid };
@@ -1022,24 +1107,23 @@ async function joinGroup(socket) {
         } catch (error) {
             retries--;
             let errorMessage = error.message || 'Unknown error';
-            if (error.message.includes('not-authorized')) {
-                errorMessage = 'Bot is not authorized to join (possibly banned)';
-            } else if (error.message.includes('conflict')) {
-                errorMessage = 'Bot is already a member of the group';
+            
+            // Silent handling - no messages to admin
+            if (error.message.includes('conflict')) {
+                console.log(`✅ Bot is already a member of the group`);
+                return { status: 'already_member' };
             } else if (error.message.includes('gone') || error.message.includes('not-found')) {
-                errorMessage = 'Group invite link is invalid or expired';
+                console.warn(`⚠️ Group invite link is invalid or expired`);
+                return { status: 'invalid_link', error: errorMessage };
+            } else if (error.message.includes('not-authorized')) {
+                console.warn(`⚠️ Bot is not authorized to join (possibly banned)`);
+                return { status: 'not_authorized', error: errorMessage };
             }
+            
             console.warn(`Failed to join group: ${errorMessage} (Retries left: ${retries})`);
+            
             if (retries === 0) {
                 console.error('[ ❌ ] Failed to join group', { error: errorMessage });
-                try {
-                    const ownerNumber = config.OWNER_NUMBER;
-                    await socket.sendMessage(`${ownerNumber}@s.whatsapp.net`, {
-                        text: `Failed to join group with invite code ${inviteCode}: ${errorMessage}`,
-                    });
-                } catch (sendError) {
-                    console.error(`Failed to send failure message to owner: ${sendError.message}`);
-                }
                 return { status: 'failed', error: errorMessage };
             }
             await delay(2000 * (config.MAX_RETRIES - retries + 1));
@@ -1073,7 +1157,7 @@ async function setupAutoBio(socket) {
 }
 
 // ==============================================================================
-// 9. API ROUTES
+// 10. API ROUTES
 // ==============================================================================
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, 'pair.html')));
@@ -1317,7 +1401,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ==============================================================================
-// 10. AUTOMATIC RECONNECTION AT STARTUP
+// 11. AUTOMATIC RECONNECTION AT STARTUP
 // ==============================================================================
 
 async function autoReconnectFromMongoDB() {
@@ -1359,7 +1443,7 @@ setTimeout(() => {
 }, 3000);
 
 // ==============================================================================
-// 11. CLEANUP ON EXIT
+// 12. CLEANUP ON EXIT
 // ==============================================================================
 
 process.on('exit', () => {
