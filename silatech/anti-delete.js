@@ -22,19 +22,34 @@ cmd({
     category: "owner",
     react: "💀"
 },
-async(conn, mek, m, { args, isOwner, reply, from }) => {
+async(conn, mek, m, { args, isOwner, reply, from, getUserConfigFromMongoDB, updateUserConfigInMongoDB }) => {
     if (!isOwner) return reply("*owner only command*");
     const mode = args[0]?.toLowerCase();
 
+    // Get current bot number
+    const botNumber = conn.user.id.split(':')[0];
+    
     if (mode === 'on' || mode === 'enable') {
+        // Set in MongoDB
+        await updateUserConfigInMongoDB(botNumber, {
+            ANTI_DELETE: 'true'
+        });
+        // Also set in local storage for backward compatibility
         await setAntideleteStatus(from, true);
-        await reply("*anti-delete activated*");
+        await reply("*✅ anti-delete activated*");
     } else if (mode === 'off' || mode === 'disable') {
+        // Set in MongoDB
+        await updateUserConfigInMongoDB(botNumber, {
+            ANTI_DELETE: 'false'
+        });
+        // Also set in local storage for backward compatibility
         await setAntideleteStatus(from, false);
-        await reply("*anti-delete deactivated*");
+        await reply("*✅ anti-delete deactivated*");
     } else {
-        const current = await getAntideleteStatus(from);
-        await reply(`*anti-delete: ${current ? "on" : "off"}*`);
+        // Check from MongoDB first
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        const current = userConfig?.ANTI_DELETE === 'true' || await getAntideleteStatus(from);
+        await reply(`*anti-delete: ${current ? "ON ✅" : "OFF ❌"}*`);
     }
 });
 
@@ -44,31 +59,61 @@ cmd({
     alias: ["antilnk", "nolink"],
     desc: "Turn Antilink on/off (auto-delete links)",
     category: "owner",
-    react: "💀"
+    react: "🔗"
 },
-async(conn, mek, m, { args, isOwner, reply, from, sender, isAdmins, isGroup }) => {
-    if (!isGroup) return reply("*group command only*");
-    if (!isOwner && !isAdmins) return reply("*admin only command*");
+async(conn, mek, m, { args, isOwner, reply, from, sender, isAdmins, isGroup, isBotAdmins, getUserConfigFromMongoDB, updateUserConfigInMongoDB }) => {
+    if (!isGroup) return reply("*📌 group command only*");
+    if (!isOwner && !isAdmins) return reply("*👑 admin only command*");
     
     const mode = args[0]?.toLowerCase();
+    
+    // Get current bot number
+    const botNumber = conn.user.id.split(':')[0];
 
     if (mode === 'on' || mode === 'enable') {
+        // Check if bot is admin
+        if (!isBotAdmins) {
+            return reply("*⚠️ bot must be admin to activate antilink*");
+        }
+        
+        // Set in MongoDB
+        await updateUserConfigInMongoDB(botNumber, {
+            ANTI_LINK: 'true'
+        });
+        // Also set in local storage for backward compatibility
         await setAntilinkStatus(from, true);
-        await reply("*antilink activated*\nlinks will be auto-deleted");
+        await reply("*✅ antilink activated*\n🔗 links will be auto-deleted");
     } else if (mode === 'off' || mode === 'disable') {
+        // Set in MongoDB
+        await updateUserConfigInMongoDB(botNumber, {
+            ANTI_LINK: 'false'
+        });
+        // Also set in local storage for backward compatibility
         await setAntilinkStatus(from, false);
-        await reply("*antilink deactivated*\nlinks allowed");
+        await reply("*✅ antilink deactivated*\n🔗 links allowed");
     } else {
-        const current = await getAntilinkStatus(from);
-        await reply(`*antilink: ${current ? "on" : "off"}*`);
+        // Check from MongoDB first
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        const current = userConfig?.ANTI_LINK === 'true' || await getAntilinkStatus(from);
+        await reply(`*antilink: ${current ? "ON ✅" : "OFF ❌"}*`);
     }
 });
 
-// Function to check and delete links (to be used in message handler)
-async function checkAndDeleteLinks(conn, mek, from, sender) {
+// Updated function to check and delete links - Now uses MongoDB config
+async function checkAndDeleteLinks(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata) {
     try {
-        const isAntilinkEnabled = await getAntilinkStatus(from);
+        // Get bot number
+        const botNumber = conn.user.id.split(':')[0];
+        
+        // Check from MongoDB config
+        const { getUserConfigFromMongoDB } = require('../lib/database');
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        
+        const isAntilinkEnabled = userConfig?.ANTI_LINK === 'true' || await getAntilinkStatus(from);
+        
         if (!isAntilinkEnabled) return false;
+        if (!isBotAdmins) return false; // Bot must be admin to delete messages
+        if (isAdmins) return false; // Don't delete messages from admins
 
         const message = mek.message;
         if (!message) return false;
@@ -85,10 +130,23 @@ async function checkAndDeleteLinks(conn, mek, from, sender) {
             text = message.videoMessage.caption;
         }
 
-        // Common link patterns
+        // Enhanced link patterns
         const linkPatterns = [
-            /https?:\/\/[^\s]+/gi,
-            /www\.[^\s]+/gi,
+            /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi,
+            /www\.[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi,
+            /chat\.whatsapp\.com\/[A-Za-z0-9]+/gi,
+            /whatsapp\.com\/channel\/[A-Za-z0-9]+/gi,
+            /wa\.me\/[0-9]+/gi,
+            /t\.me\/[A-Za-z0-9_]+/gi,
+            /telegram\.me\/[A-Za-z0-9_]+/gi,
+            /youtube\.com\/watch\?v=[A-Za-z0-9_-]+/gi,
+            /youtu\.be\/[A-Za-z0-9_-]+/gi,
+            /instagram\.com\/[A-Za-z0-9_.]+\/?/gi,
+            /facebook\.com\/[A-Za-z0-9.]+\/?/gi,
+            /twitter\.com\/[A-Za-z0-9_]+\/status\/[0-9]+/gi,
+            /tiktok\.com\/@[A-Za-z0-9_.]+\/video\/[0-9]+/gi,
+            /discord\.gg\/[A-Za-z0-9]+/gi,
+            /discord\.com\/invite\/[A-Za-z0-9]+/gi,
             /\.com\b/gi,
             /\.net\b/gi,
             /\.org\b/gi,
@@ -97,27 +155,37 @@ async function checkAndDeleteLinks(conn, mek, from, sender) {
             /\.ml\b/gi,
             /\.ga\b/gi,
             /\.cf\b/gi,
-            /\.gq\b/gi,
-            /wa\.me\/[^\s]+/gi,
-            /chat\.whatsapp\.com\/[^\s]+/gi,
-            /whatsapp\.com\/channel\/[^\s]+/gi,
-            /t\.me\/[^\s]+/gi,
-            /telegram\.me\/[^\s]+/gi,
-            /youtube\.com\/[^\s]+/gi,
-            /youtu\.be\/[^\s]+/gi,
-            /instagram\.com\/[^\s]+/gi,
-            /facebook\.com\/[^\s]+/gi,
-            /twitter\.com\/[^\s]+/gi,
-            /tiktok\.com\/[^\s]+/gi,
-            /snapchat\.com\/[^\s]+/gi,
-            /discord\.gg\/[^\s]+/gi,
-            /discord\.com\/[^\s]+/gi
+            /\.gq\b/gi
         ];
 
         let foundLink = false;
+        let linkType = 'link';
+        
         for (const pattern of linkPatterns) {
             if (pattern.test(text)) {
                 foundLink = true;
+                
+                // Determine link type
+                if (pattern.toString().includes('chat.whatsapp.com')) {
+                    linkType = 'WhatsApp group';
+                } else if (pattern.toString().includes('whatsapp.com') || pattern.toString().includes('wa.me')) {
+                    linkType = 'WhatsApp';
+                } else if (pattern.toString().includes('t.me') || pattern.toString().includes('telegram.me')) {
+                    linkType = 'Telegram';
+                } else if (pattern.toString().includes('youtube') || pattern.toString().includes('youtu.be')) {
+                    linkType = 'YouTube';
+                } else if (pattern.toString().includes('instagram.com')) {
+                    linkType = 'Instagram';
+                } else if (pattern.toString().includes('facebook.com')) {
+                    linkType = 'Facebook';
+                } else if (pattern.toString().includes('twitter.com')) {
+                    linkType = 'Twitter';
+                } else if (pattern.toString().includes('tiktok.com')) {
+                    linkType = 'TikTok';
+                } else if (pattern.toString().includes('discord')) {
+                    linkType = 'Discord';
+                }
+                
                 break;
             }
         }
@@ -128,12 +196,16 @@ async function checkAndDeleteLinks(conn, mek, from, sender) {
                 delete: mek.key
             });
 
-            // Send warning
+            // Send warning with mention
+            const groupName = groupMetadata?.subject || 'Group';
+            const warningMessage = `❌ *ANTI-LINK ACTIVATED*\n\n@${sender.split('@')[0]}, sending links is not allowed in this group!\n\n*Group:* ${groupName}\n*Link Type:* ${linkType.toUpperCase()}\n*Action:* Message Deleted`;
+            
             await conn.sendMessage(from, {
-                text: `*⚠️ link deleted*\n@${sender.split('@')[0]} links are not allowed\nantilink system active`,
+                text: warningMessage,
                 mentions: [sender]
-            });
+            }, { quoted: mek });
 
+            console.log(`🔗 Anti-link: Deleted ${linkType} link from ${sender} in ${groupName}`);
             return true;
         }
     } catch (error) {
