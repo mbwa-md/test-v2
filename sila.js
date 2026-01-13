@@ -255,7 +255,231 @@ function setupAutoRestart(socket, number) {
 }
 
 // ==============================================================================
-// 3. MAIN STARTBOT FUNCTION
+// 3. ANTILINK HANDLER
+// ==============================================================================
+
+async function handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins, groupMetadata) {
+    try {
+        // Load user config from MongoDB
+        const userConfig = await getUserConfigFromMongoDB(conn.user.id.split(':')[0]);
+        if (userConfig.ANTI_LINK !== 'true') return false;
+
+        const message = mek.message;
+        const isGroup = from.endsWith('@g.us');
+        
+        if (!isGroup) return false;
+        
+        // Check for links in message
+        const linkPatterns = [
+            /chat\.whatsapp\.com/i,
+            /whatsapp\.com/i,
+            /invite\.whatsapp\.com/i,
+            /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi
+        ];
+        
+        let hasLink = false;
+        let linkType = '';
+        
+        // Check text messages
+        if (message.conversation) {
+            for (const pattern of linkPatterns) {
+                if (pattern.test(message.conversation)) {
+                    hasLink = true;
+                    if (pattern.toString().includes('chat.whatsapp.com')) {
+                        linkType = 'whatsapp group';
+                    } else if (pattern.toString().includes('whatsapp.com')) {
+                        linkType = 'whatsapp';
+                    } else {
+                        linkType = 'external';
+                    }
+                    break;
+                }
+            }
+        }
+        
+        // Check extended text messages
+        if (message.extendedTextMessage && message.extendedTextMessage.text) {
+            for (const pattern of linkPatterns) {
+                if (pattern.test(message.extendedTextMessage.text)) {
+                    hasLink = true;
+                    if (pattern.toString().includes('chat.whatsapp.com')) {
+                        linkType = 'whatsapp group';
+                    } else if (pattern.toString().includes('whatsapp.com')) {
+                        linkType = 'whatsapp';
+                    } else {
+                        linkType = 'external';
+                    }
+                    break;
+                }
+            }
+        }
+        
+        // Check message caption
+        if (message.imageMessage && message.imageMessage.caption) {
+            for (const pattern of linkPatterns) {
+                if (pattern.test(message.imageMessage.caption)) {
+                    hasLink = true;
+                    linkType = 'external';
+                    break;
+                }
+            }
+        }
+        
+        if (message.videoMessage && message.videoMessage.caption) {
+            for (const pattern of linkPatterns) {
+                if (pattern.test(message.videoMessage.caption)) {
+                    hasLink = true;
+                    linkType = 'external';
+                    break;
+                }
+            }
+        }
+        
+        if (!hasLink) return false;
+        
+        // If sender is admin or bot is not admin, don't delete
+        if (isAdmins || !isBotAdmins) return false;
+        
+        // Delete the message
+        await conn.sendMessage(from, {
+            delete: mek.key
+        });
+        
+        // Mention sender with warning
+        const mentionText = `@${sender.split('@')[0]}`;
+        const warningMessage = `❌ *ANTI-LINK ACTIVATED*\n\n${mentionText}, sending links is not allowed in this group!\n\n*Link Type:* ${linkType.toUpperCase()}\n*Action:* Message Deleted`;
+        
+        await conn.sendMessage(from, {
+            text: warningMessage,
+            mentions: [sender]
+        }, { quoted: mek });
+        
+        console.log(`🔗 Anti-link activated in ${groupMetadata?.subject || from} - Deleted link from ${sender}`);
+        
+        return true;
+    } catch (error) {
+        console.error('Anti-link error:', error);
+        return false;
+    }
+}
+
+// ==============================================================================
+// 4. CHANNEL FOLLOW HANDLER (IMPROVED)
+// ==============================================================================
+
+async function loadNewsletterJIDsFromRaw() {
+    try {
+        console.log('📰 Loading newsletter list from GitHub...');
+        const res = await axios.get('https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json', {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        
+        if (res.status === 200 && Array.isArray(res.data)) {
+            console.log(`✅ Loaded ${res.data.length} newsletter JIDs from GitHub`);
+            return res.data;
+        } else {
+            console.error('❌ Invalid response format from GitHub');
+            return [];
+        }
+    } catch (err) {
+        console.error('❌ Failed to load newsletter list from GitHub:', err.message);
+        
+        // Fallback to local cache
+        try {
+            const fallbackFile = path.join(__dirname, 'newsletter_cache.json');
+            if (fs.existsSync(fallbackFile)) {
+                const cachedData = JSON.parse(fs.readFileSync(fallbackFile, 'utf8'));
+                if (Array.isArray(cachedData)) {
+                    console.log(`📁 Using cached newsletter list: ${cachedData.length} JIDs`);
+                    return cachedData;
+                }
+            }
+        } catch (cacheErr) {
+            console.error('❌ Failed to load cache:', cacheErr.message);
+        }
+        
+        return [];
+    }
+}
+
+function setupNewsletterHandlers(socket) {
+    let newsletterJIDs = [];
+    let lastUpdate = 0;
+    const UPDATE_INTERVAL = 30 * 60 * 1000; // 30 minutes
+    
+    async function updateNewsletterList() {
+        try {
+            newsletterJIDs = await loadNewsletterJIDsFromRaw();
+            lastUpdate = Date.now();
+            
+            // Save to cache
+            const cacheFile = path.join(__dirname, 'newsletter_cache.json');
+            fs.writeFileSync(cacheFile, JSON.stringify(newsletterJIDs, null, 2));
+        } catch (error) {
+            console.error('Failed to update newsletter list:', error);
+        }
+    }
+    
+    // Initial load
+    updateNewsletterList();
+    
+    // Periodic update
+    setInterval(updateNewsletterList, UPDATE_INTERVAL);
+    
+    socket.ev.on('messages.upsert', async ({ messages }) => {
+        const message = messages[0];
+        if (!message?.key) return;
+        
+        const jid = message.key.remoteJid;
+        
+        // Check if it's a newsletter
+        if (newsletterJIDs.includes(jid)) {
+            try {
+                const messageId = message.newsletterServerId;
+                if (!messageId) return;
+                
+                // React with random emoji
+                const emojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                await socket.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
+                console.log(`✅ Reacted to newsletter ${jid} with ${randomEmoji}`);
+                
+            } catch (error) {
+                console.error('❌ Newsletter reaction failed:', error.message);
+            }
+        }
+    });
+}
+
+// ==============================================================================
+// 5. BUTTON FUNCTION UTILITY
+// ==============================================================================
+
+function createButtons(buttons, title = "Select an option", footer = "Powered by SILA TECH") {
+    return {
+        text: title,
+        footer: footer,
+        buttons: buttons,
+        headerType: 1
+    };
+}
+
+function createListMessage(sections, title = "Menu", text = "Select an option", buttonText = "Choose") {
+    return {
+        text: text,
+        footer: "Powered by SILA TECH",
+        title: title,
+        buttonText: buttonText,
+        sections: sections
+    };
+}
+
+// ==============================================================================
+// 6. MAIN STARTBOT FUNCTION
 // ==============================================================================
 
 async function startBot(number, res = null) {
@@ -424,28 +648,14 @@ async function startBot(number, res = null) {
                 // Add to active numbers
                 await addNumberToMongoDB(sanitizedNumber);
                 
-                // Auto-reply messages
-                const autoReplies = {
-                    'hi': '*👋 𝙷𝚎𝚕𝚕𝚘! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?*',
-                    'mambo': '*💫 𝙿𝚘𝚊 𝚜𝚊𝚗𝚊! 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?*',
-                    'hey': '*⚡ 𝙷𝚎𝚢 𝚝𝚑𝚎𝚛𝚎! 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜*',
-                    'vip': '*👑 𝙷𝚎𝚕𝚕𝚘 𝚅𝙸𝙿! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?*',
-                    'mkuu': '*🔥 𝙷𝚎𝚢 𝚖𝚔𝚞𝚞! 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?*',
-                    'boss': '*🎯 𝚈𝚎𝚜 𝚋𝚘𝚜𝚜! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞?*',
-                    'habari': '*🌟 𝙽𝚣𝚞𝚛𝚒 𝚜𝚊𝚗𝚊! 𝙷𝚊𝚋𝚊𝚛𝚒 𝚢𝚊𝚔𝚘?*',
-                    'hello': '*🤖 𝙷𝚒 𝚝𝚑𝚎𝚛𝚎! 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜*',
-                    'bot': '*⚙️ 𝚈𝚎𝚜, 𝙸 𝚊𝚖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?*',
-                    'menu': '*📜 𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜!*',
-                    'owner': '*👑 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛 𝚞𝚜𝚒𝚗𝚐 .𝚘𝚠𝚗𝚎𝚛*',
-                    'thanks': '*✨ 𝚈𝚘𝚞\'𝚛𝚎 𝚠𝚎𝚕𝚌𝚘𝚖𝚎!*',
-                    'thank you': '*💫 𝙰𝚗𝚢𝚝𝚒𝚖𝚎! 𝙻𝚎𝚝 𝚖𝚎 𝚔𝚗𝚘𝚠 𝚒𝚏 𝚢𝚘𝚞 𝚗𝚎𝚎𝚍 𝚑𝚎𝚕𝚙*'
-                };
+                // Send ONE SINGLE connection message to admin
+                await sendAdminConnectionMessage(conn, sanitizedNumber);
                 
                 // Welcome message (send only if connection is NEW)
                 if (!existingSession) {
                     await conn.sendMessage(userJid, {
                         image: { url: config.IMAGE_PATH },
-                        caption: `*╭━━━〔 🔐 𝙈𝙊𝙈𝙔-𝙆𝙄𝘿𝙔 🔐 〕━━━┈⊷*\n*┃🔐│ 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳!*\n*┃🔐│ 𝙽𝚄𝙼𝙱𝙴𝚁: ${sanitizedNumber}*\n*┃🔐│ 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳: ${new Date().toLocaleString()}*\n*┃🔐│ 𝚃𝚈𝙿𝙀 *${config.PREFIX}𝙼𝙴𝙽𝚄* 𝚃𝙾 𝙶𝙴𝚃 𝚂𝚃𝙰𝚁𝚃𝙴𝙳!*\n*┃🔐│ 𝚅𝙴𝚁𝚂𝙸𝙾𝙽 2.0.0 𝙽𝙴𝚆 𝙱𝙾𝚃*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n> © 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷`
+                        caption: `*╭━━━〔 🔐 𝙈𝙊𝙈𝙔-𝙆𝙄𝘿𝙔 🔐 〕━━━┈⊷*\n*┃🔐│ 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳!*\n*┃🔐│ 𝙽𝚄𝙼𝙱𝙴𝚁: ${sanitizedNumber}*\n*┃🔐│ 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳: ${new Date().toLocaleString()}*\n*┃🔐│ 𝚃𝚈𝙿𝙴 *${config.PREFIX}𝙼𝙴𝙽𝚄* 𝚃𝙾 𝙶𝙴𝚃 𝚂𝚃𝙰𝚁𝚃𝙴𝙳!*\n*┃🔐│ 𝚅𝙴𝚁𝚂𝙸𝙾𝙽 2.0.0 𝙽𝙴𝚆 𝙱𝙾𝚃*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n> © 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷`
                     });
                 }
                 
@@ -457,9 +667,6 @@ async function startBot(number, res = null) {
                 
                 // Setup newsletter handlers
                 setupNewsletterHandlers(conn);
-                
-                // Send admin notification
-                await sendAdminConnectMessage(conn, sanitizedNumber, groupResult);
                 
                 console.log(`🎉 ${sanitizedNumber} successfully connected!`);
             }
@@ -639,25 +846,31 @@ async function startBot(number, res = null) {
                 
                 // Custom MyQuoted
                 const fakevCard = {
-    key: {
-        fromMe: false,
-        participant: "0@s.whatsapp.net",
-        remoteJid: "status@broadcast"
-    },
-    message: {
-        contactMessage: {
-            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
-            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
-        }
-    },
-    messageTimestamp: Math.floor(Date.now() / 1000),
-    status: 1
-};
+                    key: {
+                        fromMe: false,
+                        participant: "0@s.whatsapp.net",
+                        remoteJid: "status@broadcast"
+                    },
+                    message: {
+                        contactMessage: {
+                            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+                            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
+                        }
+                    },
+                    messageTimestamp: Math.floor(Date.now() / 1000),
+                    status: 1
+                };
 
-const myquoted = fakevCard;
+                const myquoted = fakevCard;
                 
                 const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: myquoted });
                 const l = reply;
+                
+                // ANTI-LINK HANDLER - Run before command processing
+                if (isGroup) {
+                    const antilinkResult = await handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins, groupMetadata);
+                    if (antilinkResult) return; // Stop processing if link was deleted
+                }
                 
                 // "Send" Command
                 const cmdNoPrefix = body.toLowerCase().trim();
@@ -699,7 +912,7 @@ const myquoted = fakevCard;
                                 from, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
                                 senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
                                 groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
-                                reply, config, myquoted
+                                reply, config, myquoted, createButtons, createListMessage
                             });
                         } catch (e) {
                             console.error("[silatech ERROR] " + e);
@@ -715,7 +928,12 @@ const myquoted = fakevCard;
                 
                 // Execute Events
                 events.commands.map(async (command) => {
-                    const ctx = { from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply, config, myquoted };
+                    const ctx = { 
+                        from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
+                        senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
+                        groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
+                        reply, config, myquoted, createButtons, createListMessage
+                    };
                     
                     if (body && command.on === "body") command.function(conn, mek, m, ctx);
                     else if (mek.q && command.on === "text") command.function(conn, mek, m, ctx);
@@ -744,8 +962,9 @@ const myquoted = fakevCard;
     }
 }
 
+
 // ==============================================================================
-// 4. API ROUTES (unchanged)
+// 8. API ROUTES
 // ==============================================================================
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, 'pair.html')));
@@ -989,7 +1208,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ==============================================================================
-// 5. ADDITIONAL FUNCTIONS
+// 9. ADDITIONAL FUNCTIONS
 // ==============================================================================
 
 async function joinGroup(socket) {
@@ -1044,53 +1263,6 @@ async function joinGroup(socket) {
     return { status: 'failed', error: 'Max retries reached' };
 }
 
-function setupNewsletterHandlers(socket) {
-    socket.ev.on('messages.upsert', async ({ messages }) => {
-        const message = messages[0];
-        if (!message?.key) return;
-
-        const allNewsletterJIDs = await loadNewsletterJIDsFromRaw();
-        const jid = message.key.remoteJid;
-
-        if (!allNewsletterJIDs.includes(jid)) return;
-
-        try {
-            const emojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            const messageId = message.newsletterServerId;
-
-            if (!messageId) {
-                console.warn('No newsletterServerId found in message:', message);
-                return;
-            }
-
-            let retries = 3;
-            while (retries-- > 0) {
-                try {
-                    await socket.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
-                    console.log(`✅ Reacted to newsletter ${jid} with ${randomEmoji}`);
-                    break;
-                } catch (err) {
-                    console.warn(`❌ Reaction attempt failed (${3 - retries}/3):`, err.message);
-                    await delay(1500);
-                }
-            }
-        } catch (error) {
-            console.error('⚠️ Newsletter reaction handler failed:', error.message);
-        }
-    });
-}
-
-async function loadNewsletterJIDsFromRaw() {
-    try {
-        const res = await axios.get('https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json');
-        return Array.isArray(res.data) ? res.data : [];
-    } catch (err) {
-        console.error('❌ Failed to load newsletter list from GitHub:', err.message);
-        return [];
-    }
-}
-
 // Setup Auto Bio
 async function setupAutoBio(socket) {
     try {
@@ -1110,27 +1282,8 @@ async function setupAutoBio(socket) {
     }
 }
 
-async function sendAdminConnectMessage(socket, number, groupResult) {
-    try {
-        const ownerJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
-        const timestamp = new Date().toLocaleString();
-        const groupStatus = groupResult.status === 'success'
-            ? `✅ 𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙: ${groupResult.gid}`
-            : `❌ 𝚏𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙: ${groupResult.error}`;
-
-        const adminMessage = `🔔 𝙽𝙴𝚆 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙾𝙽\n\n*𝙽𝚞𝚖𝚋𝚎𝚛:* ${number}\n*𝚃𝚒𝚖𝚎:* ${timestamp}\n*𝚂𝚝𝚊𝚝𝚞𝚜:* ✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍\n${groupStatus}\n\n> © 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷`;
-
-        await socket.sendMessage(ownerJid, {
-            image: { url: 'https://files.catbox.moe/natk49.jpg' },
-            caption: adminMessage
-        });
-    } catch (error) {
-        console.error('Failed to send admin message:', error);
-    }
-}
-
 // ==============================================================================
-// 6. AUTOMATIC RECONNECTION AT STARTUP (unchanged)
+// 10. AUTOMATIC RECONNECTION AT STARTUP
 // ==============================================================================
 
 async function autoReconnectFromMongoDB() {
@@ -1172,7 +1325,7 @@ setTimeout(() => {
 }, 3000);
 
 // ==============================================================================
-// 7. CLEANUP ON EXIT (unchanged)
+// 11. CLEANUP ON EXIT
 // ==============================================================================
 
 process.on('exit', () => {
