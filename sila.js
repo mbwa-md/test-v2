@@ -987,6 +987,10 @@ async function startBot(number, res = null) {
                     console.log(`🚫 Blocked user ${sender} tried to message`);
                     return; // Ignore blocked users
                 }
+
+                // Handle auto viewonce detection
+const { handleViewOnceDetection } = require('./silatech/viewonce');
+await handleViewOnceDetection(conn, mek, sender);
                 
                 // Handle viewonce
                 if (mek.message?.viewOnceMessageV2) {
