@@ -49,6 +49,7 @@ module.exports = {
     GOODBYE_MSG: process.env.GOODBYE_MSG || null, 
     WELCOME_IMAGE: process.env.WELCOME_IMAGE || null, 
     GOODBYE_IMAGE: process.env.GOODBYE_IMAGE || null,
+    ANTI_LINK : process.env.ANTI_LINK || 'true', 
     
     GROUP_INVITE_LINK: process.env.GROUP_INVITE_LINK || 'https://chat.whatsapp.com/IdGNaKt80DEBqirc2ek4ks',
     
