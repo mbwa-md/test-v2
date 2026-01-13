@@ -1,274 +1,44 @@
 const { cmd } = require('../momy');
 
-// Command ya kuona blocklist
+// Command ya blocklist
 cmd({
     pattern: "blocklist",
-    alias: ["listblock", "blocks", "blocked"],
-    desc: "View your blocked contacts list",
+    alias: ["block", "bl"],
+    desc: "Manage blocklist (block/unblock users)",
     category: "owner",
     react: "🚫",
     fromMe: true
-}, async (conn, mek, m, { reply }) => {
-    try {
-        await reply("*⏳ Fetching blocked contacts...*");
+},
+async(conn, mek, m, { args, reply, addToBlocklist, removeFromBlocklist, getBlocklist }) => {
+    const action = args[0]?.toLowerCase();
+    const target = args[1];
+    const botNumber = conn.user.id.split(':')[0];
+    
+    if (action === 'add' && target) {
+        const userId = target.includes('@') ? target : `${target}@s.whatsapp.net`;
+        await addToBlocklist(botNumber, userId);
         
-        // Fetch blocklist from WhatsApp
-        const blocklist = await conn.fetchBlocklist();
+        // Clear cache
+        require('../sila.js').blocklistCache.delete(botNumber);
         
-        if (!blocklist || blocklist.length === 0) {
-            return reply("*✅ You have no blocked contacts*");
+        await reply(`✅ Added ${userId} to blocklist`);
+    } else if (action === 'remove' && target) {
+        const userId = target.includes('@') ? target : `${target}@s.whatsapp.net`;
+        await removeFromBlocklist(botNumber, userId);
+        
+        // Clear cache
+        require('../sila.js').blocklistCache.delete(botNumber);
+        
+        await reply(`✅ Removed ${userId} from blocklist`);
+    } else if (action === 'list') {
+        const blocklist = await getBlocklist(botNumber);
+        if (blocklist.length === 0) {
+            await reply('📋 Blocklist is empty');
+        } else {
+            const list = blocklist.map((user, i) => `${i+1}. ${user}`).join('\n');
+            await reply(`🚫 *BLOCKED USERS:*\n\n${list}`);
         }
-        
-        let response = `╭━━【 🚫 𝙱𝙻𝙾𝙲𝙺𝙴𝙳 𝙲𝙾𝙽𝚃𝙰𝙲𝚃𝚂 】━━━╮
-│ 📊 𝚃𝚘𝚝𝚊𝚕: *${blocklist.length}*
-╰━━━━━━━━━━━━━━━━━━━━╯\n\n`;
-        
-        // Display blocked contacts with numbers
-        blocklist.forEach((contact, index) => {
-            const jid = contact.jid || contact;
-            const number = jid.split('@')[0];
-            const name = contact.notify || contact.name || `User ${index + 1}`;
-            
-            response += `╭━━【 #${index + 1} 】━━━━━━━━╮
-│ 👤 𝙽𝚊𝚖𝚎: *${name}*
-│ 📞 𝙽𝚞𝚖𝚋𝚎𝚛: *${number}*
-│ 🆔 𝙹𝙸𝙳: ${jid}
-╰━━━━━━━━━━━━━━━━━━━━╯\n`;
-        });
-        
-        response += `\n📝 *𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂:*
-• *${config.PREFIX}unblockall* - Unblock all contacts
-• *${config.PREFIX}unblock @tag* - Unblock specific contact
-• *${config.PREFIX}block @tag* - Block a contact\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
-        await reply(response);
-        
-    } catch (error) {
-        console.error('Blocklist error:', error);
-        reply("*❌ Failed to fetch blocklist*");
+    } else {
+        await reply(`📌 *Usage:*\n.blocklist add [number]\n.blocklist remove [number]\n.blocklist list`);
     }
 });
-
-// Command ya kutoa block wote
-cmd({
-    pattern: "unblockall",
-    alias: ["unblockall", "clearblocks"],
-    desc: "Unblock all blocked contacts",
-    category: "owner",
-    react: "✅",
-    fromMe: true
-}, async (conn, mek, m, { reply }) => {
-    try {
-        await reply("*⏳ Fetching blocked contacts...*");
-        
-        const blocklist = await conn.fetchBlocklist();
-        
-        if (!blocklist || blocklist.length === 0) {
-            return reply("*✅ You have no blocked contacts to unblock*");
-        }
-        
-        await reply(`*⏳ Unblocking ${blocklist.length} contacts...*`);
-        
-        let successCount = 0;
-        let failCount = 0;
-        
-        // Unblock each contact
-        for (const contact of blocklist) {
-            try {
-                const jid = contact.jid || contact;
-                await conn.updateBlockStatus(jid, 'unblock');
-                successCount++;
-                
-                // Small delay to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (err) {
-                console.error(`Failed to unblock ${contact}:`, err.message);
-                failCount++;
-            }
-        }
-        
-        const result = `╭━━【 ✅ 𝚄𝙽𝙱𝙻𝙾𝙲𝙺 𝚁𝙴𝚂𝚄𝙻𝚃𝚂 】━━━╮
-│ 📊 𝚃𝚘𝚝𝚊𝚕: *${blocklist.length}*
-│ ✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜: *${successCount}*
-│ ❌ 𝙵𝚊𝚒𝚕𝚎𝚍: *${failCount}*
-╰━━━━━━━━━━━━━━━━━━━━╯\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
-        await reply(result);
-        
-    } catch (error) {
-        console.error('Unblockall error:', error);
-        reply("*❌ Failed to unblock contacts*");
-    }
-});
-
-// Command ya kutoa block mmoja mmoja (kwa mention)
-cmd({
-    pattern: "unblock",
-    alias: ["removeblock", "ublock"],
-    desc: "Unblock a specific contact",
-    category: "owner",
-    react: "🔓",
-    fromMe: true
-}, async (conn, mek, m, { from, reply, text, mentionedJid }) => {
-    try {
-        // Check if there's a mention
-        if (!mentionedJid || mentionedJid.length === 0) {
-            return reply(`*📝 𝚄𝚂𝙰𝙶𝙴:*
-• ${config.PREFIX}unblock @mention
-• ${config.PREFIX}unblock 2557xxxxxxxx\n\n𝚄𝚗𝚋𝚕𝚘𝚌𝚔 𝚋𝚢 𝚖𝚎𝚗𝚝𝚒𝚘𝚗𝚒𝚗𝚐 𝚘𝚛 𝚙𝚛𝚘𝚟𝚒𝚍𝚒𝚗𝚐 𝚗𝚞𝚖𝚋𝚎𝚛`);
-        }
-        
-        const targetJid = mentionedJid[0];
-        
-        // Check if it's a valid JID
-        if (!targetJid.includes('@')) {
-            return reply("*❌ Invalid user mentioned*");
-        }
-        
-        await reply(`*⏳ Checking if ${targetJid.split('@')[0]} is blocked...*`);
-        
-        // First check if user is actually blocked
-        const blocklist = await conn.fetchBlocklist();
-        const isBlocked = blocklist.some(contact => {
-            const contactJid = contact.jid || contact;
-            return contactJid === targetJid;
-        });
-        
-        if (!isBlocked) {
-            return reply(`*ℹ️ ${targetJid.split('@')[0]} is not blocked*`);
-        }
-        
-        // Unblock the user
-        await conn.updateBlockStatus(targetJid, 'unblock');
-        
-        const successMessage = `╭━━【 ✅ 𝚄𝙽𝙱𝙻𝙾𝙲𝙺𝙴𝙳 】━━━━━━╮
-│ 🔓 𝚄𝚜𝚎𝚛: @${targetJid.split('@')[0]}
-│ 📞 𝙽𝚞𝚖𝚋𝚎𝚛: ${targetJid.split('@')[0]}
-│ 🕐 𝚃𝚒𝚖𝚎: ${new Date().toLocaleTimeString()}
-╰━━━━━━━━━━━━━━━━━━━━╯\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
-        await reply(successMessage, { mentions: [targetJid] });
-        
-    } catch (error) {
-        console.error('Unblock error:', error);
-        reply("*❌ Failed to unblock user*");
-    }
-});
-
-// Command ya kuweka block (kwa mention)
-cmd({
-    pattern: "block",
-    alias: ["addblock", "blockuser"],
-    desc: "Block a specific contact",
-    category: "owner",
-    react: "🚫",
-    fromMe: true
-}, async (conn, mek, m, { from, reply, text, mentionedJid }) => {
-    try {
-        // Check if there's a mention or number provided
-        if ((!mentionedJid || mentionedJid.length === 0) && !text) {
-            return reply(`*📝 𝚄𝚂𝙰𝙶𝙴:*
-• ${config.PREFIX}block @mention
-• ${config.PREFIX}block 2557xxxxxxxx\n\n𝙱𝚕𝚘𝚌𝚔 𝚋𝚢 𝚖𝚎𝚗𝚝𝚒𝚘𝚗𝚒𝚗𝚐 𝚘𝚛 𝚙𝚛𝚘𝚟𝚒𝚍𝚒𝚗𝚐 𝚗𝚞𝚖𝚋𝚎𝚛`);
-        }
-        
-        let targetJid;
-        
-        if (mentionedJid && mentionedJid.length > 0) {
-            // Use mentioned user
-            targetJid = mentionedJid[0];
-        } else if (text) {
-            // Use provided number
-            const number = text.replace(/[^0-9]/g, '');
-            if (number.length < 9) {
-                return reply("*❌ Invalid phone number*");
-            }
-            targetJid = `${number}@s.whatsapp.net`;
-        }
-        
-        if (!targetJid.includes('@')) {
-            return reply("*❌ Invalid user/number*");
-        }
-        
-        await reply(`*⏳ Blocking ${targetJid.split('@')[0]}...*`);
-        
-        // First check if already blocked
-        const blocklist = await conn.fetchBlocklist();
-        const isAlreadyBlocked = blocklist.some(contact => {
-            const contactJid = contact.jid || contact;
-            return contactJid === targetJid;
-        });
-        
-        if (isAlreadyBlocked) {
-            return reply(`*ℹ️ ${targetJid.split('@')[0]} is already blocked*`);
-        }
-        
-        // Block the user
-        await conn.updateBlockStatus(targetJid, 'block');
-        
-        const successMessage = `╭━━【 🚫 𝙱𝙻𝙾𝙲𝙺𝙴𝙳 】━━━━━━╮
-│ 🚫 𝚄𝚜𝚎𝚛: @${targetJid.split('@')[0]}
-│ 📞 𝙽𝚞𝚖𝚋𝚎𝚛: ${targetJid.split('@')[0]}
-│ 🕐 𝚃𝚒𝚖𝚎: ${new Date().toLocaleTimeString()}
-╰━━━━━━━━━━━━━━━━━━━━╯\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
-        await reply(successMessage, { mentions: [targetJid] });
-        
-    } catch (error) {
-        console.error('Block error:', error);
-        reply("*❌ Failed to block user*");
-    }
-});
-
-// Command ya kucheck kama user specific ameblock
-cmd({
-    pattern: "checkblock",
-    alias: ["isblocked", "blockcheck"],
-    desc: "Check if a user is blocked",
-    category: "owner",
-    react: "🔍",
-    fromMe: true
-}, async (conn, mek, m, { from, reply, text, mentionedJid }) => {
-    try {
-        if ((!mentionedJid || mentionedJid.length === 0) && !text) {
-            return reply(`*📝 𝚄𝚂𝙰𝙶𝙴:*
-• ${config.PREFIX}checkblock @mention
-• ${config.PREFIX}checkblock 2557xxxxxxxx`);
-        }
-        
-        let targetJid;
-        
-        if (mentionedJid && mentionedJid.length > 0) {
-            targetJid = mentionedJid[0];
-        } else if (text) {
-            const number = text.replace(/[^0-9]/g, '');
-            if (number.length < 9) {
-                return reply("*❌ Invalid phone number*");
-            }
-            targetJid = `${number}@s.whatsapp.net`;
-        }
-        
-        await reply(`*⏳ Checking block status...*`);
-        
-        const blocklist = await conn.fetchBlocklist();
-        const isBlocked = blocklist.some(contact => {
-            const contactJid = contact.jid || contact;
-            return contactJid === targetJid;
-        });
-        
-        const result = `╭━━【 🔍 𝙱𝙻𝙾𝙲𝙺 𝚂𝚃𝙰𝚃𝚄𝚂 】━━━╮
-│ 👤 𝚄𝚜𝚎𝚛: @${targetJid.split('@')[0]}
-│ 📞 𝙽𝚞𝚖𝚋𝚎𝚛: ${targetJid.split('@')[0]}
-│ 🚫 𝚂𝚝𝚊𝚝𝚞𝚜: *${isBlocked ? '𝙱𝙻𝙾𝙲𝙺𝙴𝙳 🔴' : '𝙽𝙾𝚃 𝙱𝙻𝙾𝙲𝙺𝙴𝙳 🟢'}*
-╰━━━━━━━━━━━━━━━━━━━━╯\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
-        await reply(result, { mentions: [targetJid] });
-        
-    } catch (error) {
-        console.error('Checkblock error:', error);
-        reply("*❌ Failed to check block status*");
-    }
-});
-
-// Add config to the file
-const config = require('../config');
