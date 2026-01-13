@@ -52,8 +52,7 @@ cmd({
     alias: ["upload", "geturl", "link"],
     desc: "upload media and get url",
     category: "tools",
-    react: "🔗",
-    filename: __filename
+    react: "🔗"
 }, async (conn, mek, m, { from, reply, myquoted }) => {
     try {
         // Prefer current message media, else quoted media
@@ -98,7 +97,7 @@ cmd({
         }
 
         if (!url) {
-            await m.react("❌");
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
             return reply("*❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚞𝚙𝚕𝚘𝚊𝚍 𝚖𝚎𝚍𝚒𝚊*");
         }
 
@@ -125,11 +124,11 @@ cmd({
             text: response
         }, { quoted: myquoted });
 
-        await m.react("✅");
+        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
 
     } catch (error) {
         console.error('[URL] error:', error?.message || error);
         reply("*❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚌𝚘𝚗𝚟𝚎𝚛𝚝 𝚖𝚎𝚍𝚒𝚊 𝚝𝚘 𝚄𝚁𝙻*");
-        await m.react("❌");
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
     }
 });
