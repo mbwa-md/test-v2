@@ -8,8 +8,7 @@ cmd({
     alias: ["viewonce", "vo"],
     desc: "view once media saver",
     category: "tools",
-    react: "👁️",
-    filename: __filename
+    react: "👁️"
 }, async (conn, mek, m, { from, reply, myquoted }) => {
     try {
         // Check if there's a quoted message
@@ -119,7 +118,7 @@ cmd({
         }
 
         // React to show success
-        await m.react("✅");
+        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
 
     } catch (error) {
         console.error("View once error:", error);
@@ -133,14 +132,13 @@ cmd({
     alias: ["autoviewonce", "savevo"],
     desc: "auto save all view once messages",
     category: "settings",
-    react: "👁️",
-    filename: __filename
+    react: "👁️"
 }, async (conn, mek, m, { from, reply, isCreator, myquoted }) => {
     if (!isCreator) return reply("*owner only command*");
     
     try {
         const response = `╭━━【 👁️ 𝙰𝚄𝚃𝙾 𝚅𝙸𝙴𝚆 𝙾𝙽𝙲𝙴 】━━━━╮
-│ 📝 𝚜𝚝𝚊𝚝𝚞𝚜: *𝚌𝚘𝚖𝚖𝚒𝚗𝚐 𝚜𝚘𝚘𝚗*
+│ 📝 𝚜𝚝𝚊𝚝𝚞𝚜: *𝚌𝚘𝚖𝚒𝚗𝚐 𝚜𝚘𝚘𝚗*
 │ ⚠️ 𝚗𝚘𝚝𝚎: 𝚊𝚞𝚝𝚘 𝚟𝚒𝚎𝚠 𝚘𝚗𝚌𝚎 𝚜𝚊𝚟𝚒𝚗𝚐
 │ 🔧 𝚠𝚒𝚕𝚕 𝚋𝚎 𝚒𝚖𝚙𝚕𝚎𝚖𝚎𝚗𝚝𝚎𝚍 𝚒𝚗 𝚗𝚎𝚡𝚝 𝚞𝚙𝚍𝚊𝚝𝚎
 ╰━━━━━━━━━━━━━━━━━━━━╯
@@ -163,8 +161,7 @@ cmd({
     alias: ["viewoncelist", "vosaved"],
     desc: "view saved view once media",
     category: "tools",
-    react: "📁",
-    filename: __filename
+    react: "📁"
 }, async (conn, mek, m, { from, reply, isCreator, myquoted }) => {
     if (!isCreator) return reply("*owner only command*");
     
@@ -219,8 +216,7 @@ cmd({
     alias: ["clearviewonce", "clearsaved"],
     desc: "clear all saved view once media",
     category: "tools",
-    react: "🧹",
-    filename: __filename
+    react: "🧹"
 }, async (conn, mek, m, { from, reply, isCreator, myquoted }) => {
     if (!isCreator) return reply("*owner only command*");
     
