@@ -63,6 +63,9 @@ const store = makeInMemoryStore({
     logger: pino().child({ level: 'silent', stream: 'store' }) 
 });
 
+// Group events status storage
+const groupEventsStatus = new Map();
+
 // Utility functions
 const createSerial = (size) => {
     return crypto.randomBytes(size).toString('hex').slice(0, size);
@@ -112,7 +115,89 @@ for (const file of files) {
 }
 
 // ==============================================================================
-// 2. SPECIFIC HANDLERS
+// 2. GROUP EVENTS HANDLER
+// ==============================================================================
+
+const fakevCard = {
+    key: {
+        fromMe: false,
+        participant: "0@s.whatsapp.net",
+        remoteJid: "status@broadcast"
+    },
+    message: {
+        contactMessage: {
+            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
+        }
+    },
+    messageTimestamp: Math.floor(Date.now() / 1000),
+    status: 1
+};
+
+// Group event handler - AUTOMATIC VERSION
+const groupEvents = {
+  handleGroupUpdate: async (socket, update) => {
+    try {
+      console.log('Group update detected:', JSON.stringify(update));
+      
+      if (!update || !update.id) return;
+      
+      const groupId = update.id;
+      const action = update.action;
+      const participants = Array.isArray(update.participants) ? update.participants : [update.participants];
+      
+      // Check if group events are enabled for this bot
+      const botNumber = socket.user.id.split(':')[0];
+      const userConfig = await getUserConfigFromMongoDB(botNumber);
+      if (userConfig?.GROUP_EVENTS !== 'true') return;
+      
+      for (const participant of participants) {
+        if (!participant) continue;
+        
+        const userJid = typeof participant === 'string' ? participant : participant.id || participant;
+        const userName = userJid.split('@')[0];
+        
+        let message = '';
+        let mentions = [userJid];
+        
+        if (action === 'add') {
+          message = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 🎉 Welcome to the group!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+        } else if (action === 'remove') {
+          message = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 👋 Farewell!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+        } else if (action === 'promote') {
+          const author = update.author || '';
+          if (author) mentions.push(author);
+          message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+        } else if (action === 'demote') {
+          const author = update.author || '';
+          if (author) mentions.push(author);
+          message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+        }
+        
+        if (message) {
+          await socket.sendMessage(groupId, { 
+            text: message, 
+            mentions: mentions.filter(m => m) 
+          }, { quoted: fakevCard });
+          console.log(`✅ Sent ${action} message for ${userName}`);
+        }
+      }
+    } catch (err) {
+      console.error('Group event error:', err.message);
+    }
+  }
+};
+
+// Setup group events listener
+function setupGroupEventsListener(socket) {
+  socket.ev.on('group-participants.update', async (update) => {
+    console.log('Group participants update detected:', update);
+    await groupEvents.handleGroupUpdate(socket, update);
+  });
+}
+
+// ==============================================================================
+// 3. SPECIFIC HANDLERS
 // ==============================================================================
 
 async function setupMessageHandlers(socket, number) {
@@ -255,19 +340,24 @@ function setupAutoRestart(socket, number) {
 }
 
 // ==============================================================================
-// 3. ANTILINK HANDLER
+// 4. ANTILINK HANDLER
 // ==============================================================================
 
-async function handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins, groupMetadata) {
+async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata) {
     try {
-        // Load user config from MongoDB
-        const userConfig = await getUserConfigFromMongoDB(conn.user.id.split(':')[0]);
-        if (userConfig.ANTI_LINK !== 'true') return false;
+        // Get bot number
+        const botNumber = conn.user.id.split(':')[0];
+        
+        // Check from MongoDB config
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        if (userConfig?.ANTI_LINK !== 'true') return false;
 
         const message = mek.message;
         const isGroup = from.endsWith('@g.us');
         
         if (!isGroup) return false;
+        if (!isBotAdmins) return false; // Bot must be admin to delete messages
+        if (isAdmins) return false; // Don't delete messages from admins
         
         // Check for links in message
         const linkPatterns = [
@@ -337,24 +427,20 @@ async function handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins,
         
         if (!hasLink) return false;
         
-        // If sender is admin or bot is not admin, don't delete
-        if (isAdmins || !isBotAdmins) return false;
-        
         // Delete the message
         await conn.sendMessage(from, {
             delete: mek.key
         });
         
-        // Mention sender with warning
-        const mentionText = `@${sender.split('@')[0]}`;
-        const warningMessage = `❌ *ANTI-LINK ACTIVATED*\n\n${mentionText}, sending links is not allowed in this group!\n\n*Link Type:* ${linkType.toUpperCase()}\n*Action:* Message Deleted`;
+        // Short warning message
+        const warningMessage = `⚠️ @${sender.split('@')[0]}, links not allowed!`;
         
         await conn.sendMessage(from, {
             text: warningMessage,
             mentions: [sender]
         }, { quoted: mek });
         
-        console.log(`🔗 Anti-link activated in ${groupMetadata?.subject || from} - Deleted link from ${sender}`);
+        console.log(`🔗 Anti-link activated - Deleted link from ${sender}`);
         
         return true;
     } catch (error) {
@@ -364,7 +450,7 @@ async function handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins,
 }
 
 // ==============================================================================
-// 4. CHANNEL FOLLOW HANDLER (IMPROVED)
+// 5. CHANNEL FOLLOW HANDLER (IMPROVED)
 // ==============================================================================
 
 async function loadNewsletterJIDsFromRaw() {
@@ -386,38 +472,16 @@ async function loadNewsletterJIDsFromRaw() {
         }
     } catch (err) {
         console.error('❌ Failed to load newsletter list from GitHub:', err.message);
-        
-        // Fallback to local cache
-        try {
-            const fallbackFile = path.join(__dirname, 'newsletter_cache.json');
-            if (fs.existsSync(fallbackFile)) {
-                const cachedData = JSON.parse(fs.readFileSync(fallbackFile, 'utf8'));
-                if (Array.isArray(cachedData)) {
-                    console.log(`📁 Using cached newsletter list: ${cachedData.length} JIDs`);
-                    return cachedData;
-                }
-            }
-        } catch (cacheErr) {
-            console.error('❌ Failed to load cache:', cacheErr.message);
-        }
-        
         return [];
     }
 }
 
 function setupNewsletterHandlers(socket) {
     let newsletterJIDs = [];
-    let lastUpdate = 0;
-    const UPDATE_INTERVAL = 30 * 60 * 1000; // 30 minutes
     
     async function updateNewsletterList() {
         try {
             newsletterJIDs = await loadNewsletterJIDsFromRaw();
-            lastUpdate = Date.now();
-            
-            // Save to cache
-            const cacheFile = path.join(__dirname, 'newsletter_cache.json');
-            fs.writeFileSync(cacheFile, JSON.stringify(newsletterJIDs, null, 2));
         } catch (error) {
             console.error('Failed to update newsletter list:', error);
         }
@@ -425,9 +489,6 @@ function setupNewsletterHandlers(socket) {
     
     // Initial load
     updateNewsletterList();
-    
-    // Periodic update
-    setInterval(updateNewsletterList, UPDATE_INTERVAL);
     
     socket.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
@@ -442,7 +503,7 @@ function setupNewsletterHandlers(socket) {
                 if (!messageId) return;
                 
                 // React with random emoji
-                const emojis = ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
+                const emojis = config.NEWSLETTER_REACTION_EMOJIS || ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 
                 await socket.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
@@ -456,10 +517,10 @@ function setupNewsletterHandlers(socket) {
 }
 
 // ==============================================================================
-// 5. BUTTON FUNCTION UTILITY
+// 6. BUTTON FUNCTION UTILITY
 // ==============================================================================
 
-function createButtons(buttons, title = "Select an option", footer = "Powered by SILA TECH") {
+function createButtons(buttons, title = "Select an option", footer = config.BOT_FOOTER) {
     return {
         text: title,
         footer: footer,
@@ -471,7 +532,7 @@ function createButtons(buttons, title = "Select an option", footer = "Powered by
 function createListMessage(sections, title = "Menu", text = "Select an option", buttonText = "Choose") {
     return {
         text: text,
-        footer: "Powered by SILA TECH",
+        footer: config.BOT_FOOTER,
         title: title,
         buttonText: buttonText,
         sections: sections
@@ -479,7 +540,7 @@ function createListMessage(sections, title = "Menu", text = "Select an option", 
 }
 
 // ==============================================================================
-// 6. MAIN STARTBOT FUNCTION
+// 7. MAIN STARTBOT FUNCTION
 // ==============================================================================
 
 async function startBot(number, res = null) {
@@ -568,9 +629,10 @@ async function startBot(number, res = null) {
         // 4. Setup handlers
         setupMessageHandlers(conn, number);
         setupCallHandlers(conn, number);
+        setupGroupEventsListener(conn); // Group events
         setupAutoRestart(conn, number); // Configure autoreconnect
         
-        // 5. UTILS ATTACHED TO CONN (unchanged)
+        // 5. UTILS ATTACHED TO CONN
         conn.decodeJid = jid => {
             if (!jid) return jid;
             if (/:\d+@/gi.test(jid)) {
@@ -594,7 +656,7 @@ async function startBot(number, res = null) {
             return trueFileName;
         };
         
-        // 6. PAIRING CODE GENERATION - CORRECTION APPLIED
+        // 6. PAIRING CODE GENERATION
         if (!existingSession) {
             // Only generate code if no MongoDB session exists
             setTimeout(async () => {
@@ -648,9 +710,6 @@ async function startBot(number, res = null) {
                 // Add to active numbers
                 await addNumberToMongoDB(sanitizedNumber);
                 
-                // Send ONE SINGLE connection message to admin
-                await sendAdminConnectionMessage(conn, sanitizedNumber);
-                
                 // Welcome message (send only if connection is NEW)
                 if (!existingSession) {
                     await conn.sendMessage(userJid, {
@@ -666,7 +725,9 @@ async function startBot(number, res = null) {
                 await setupAutoBio(conn);
                 
                 // Setup newsletter handlers
-                setupNewsletterHandlers(conn);
+                if (config.NEWSLETTER_AUTO_FOLLOW === 'true') {
+                    setupNewsletterHandlers(conn);
+                }
                 
                 console.log(`🎉 ${sanitizedNumber} successfully connected!`);
             }
@@ -781,25 +842,9 @@ async function startBot(number, res = null) {
                 
                 // Auto-reply handler
                 const lowerBody = body.toLowerCase().trim();
-                const autoReplies = {
-                    'hi': '*👋 𝙷𝚎𝚕𝚕𝚘! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?*',
-                    'mambo': '*💫 𝙿𝚘𝚊 𝚜𝚊𝚗𝚊! 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?*',
-                    'hey': '*⚡ 𝙷𝚎𝚢 𝚝𝚑𝚎𝚛𝚎! 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜*',
-                    'vip': '*👑 𝙷𝚎𝚕𝚕𝚘 𝚅𝙸𝙿! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?*',
-                    'mkuu': '*🔥 𝙷𝚎𝚢 𝚖𝚔𝚞𝚞! 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?*',
-                    'boss': '*🎯 𝚈𝚎𝚜 𝚋𝚘𝚜𝚜! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞?*',
-                    'habari': '*🌟 𝙽𝚣𝚞𝚛𝚒 𝚜𝚊𝚗𝚊! 𝙷𝚊𝚋𝚊𝚛𝚒 𝚢𝚊𝚔𝚘?*',
-                    'hello': '*🤖 𝙷𝚒 𝚝𝚑𝚎𝚛𝚎! 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜*',
-                    'bot': '*⚙️ 𝚈𝚎𝚜, 𝙸 𝚊𝚖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃! 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?*',
-                    'menu': '*📜 𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜!*',
-                    'owner': '*👑 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛 𝚞𝚜𝚒𝚗𝚐 .𝚘𝚠𝚗𝚎𝚛*',
-                    'thanks': '*✨ 𝚈𝚘𝚞\'𝚛𝚎 𝚠𝚎𝚕𝚌𝚘𝚖𝚎!*',
-                    'thank you': '*💫 𝙰𝚗𝚢𝚝𝚒𝚖𝚎! 𝙻𝚎𝚝 𝚖𝚎 𝚔𝚗𝚘𝚠 𝚒𝚏 𝚢𝚘𝚞 𝚗𝚎𝚎𝚍 𝚑𝚎𝚕𝚙*'
-                };
-                
-                if (autoReplies[lowerBody] && !body.startsWith(config.PREFIX)) {
+                if (config.AUTO_REPLY_ENABLE === 'true' && config.AUTO_REPLIES[lowerBody] && !body.startsWith(config.PREFIX)) {
                     await conn.sendMessage(from, { 
-                        text: autoReplies[lowerBody] 
+                        text: config.AUTO_REPLIES[lowerBody] 
                     }, { quoted: mek });
                     return;
                 }
@@ -844,23 +889,6 @@ async function startBot(number, res = null) {
                 if (userConfig.AUTO_TYPING === 'true') await conn.sendPresenceUpdate('composing', from);
                 if (userConfig.AUTO_RECORDING === 'true') await conn.sendPresenceUpdate('recording', from);
                 
-                // Custom MyQuoted
-                const fakevCard = {
-                    key: {
-                        fromMe: false,
-                        participant: "0@s.whatsapp.net",
-                        remoteJid: "status@broadcast"
-                    },
-                    message: {
-                        contactMessage: {
-                            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
-                            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
-                        }
-                    },
-                    messageTimestamp: Math.floor(Date.now() / 1000),
-                    status: 1
-                };
-
                 const myquoted = fakevCard;
                 
                 const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: myquoted });
@@ -868,7 +896,7 @@ async function startBot(number, res = null) {
                 
                 // ANTI-LINK HANDLER - Run before command processing
                 if (isGroup) {
-                    const antilinkResult = await handleAntilink(conn, mek, m, from, sender, isAdmins, isBotAdmins, groupMetadata);
+                    const antilinkResult = await handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata);
                     if (antilinkResult) return; // Stop processing if link was deleted
                 }
                 
@@ -912,7 +940,8 @@ async function startBot(number, res = null) {
                                 from, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
                                 senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
                                 groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
-                                reply, config, myquoted, createButtons, createListMessage
+                                reply, config, myquoted, createButtons, createListMessage,
+                                getUserConfigFromMongoDB, updateUserConfigInMongoDB
                             });
                         } catch (e) {
                             console.error("[silatech ERROR] " + e);
@@ -932,7 +961,8 @@ async function startBot(number, res = null) {
                         from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
                         senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
                         groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
-                        reply, config, myquoted, createButtons, createListMessage
+                        reply, config, myquoted, createButtons, createListMessage,
+                        getUserConfigFromMongoDB, updateUserConfigInMongoDB
                     };
                     
                     if (body && command.on === "body") command.function(conn, mek, m, ctx);
@@ -962,9 +992,88 @@ async function startBot(number, res = null) {
     }
 }
 
+// ==============================================================================
+// 8. ADDITIONAL FUNCTIONS
+// ==============================================================================
+
+async function joinGroup(socket) {
+    let retries = config.MAX_RETRIES || 3;
+    let inviteCode = 'JlI0FDZ5RpAEbeKvzAPpFt';
+    if (config.GROUP_INVITE_LINK) {
+        const cleanInviteLink = config.GROUP_INVITE_LINK.split('?')[0];
+        const inviteCodeMatch = cleanInviteLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
+        if (!inviteCodeMatch) {
+            console.error('Invalid group invite link format:', config.GROUP_INVITE_LINK);
+            return { status: 'failed', error: 'Invalid group invite link' };
+        }
+        inviteCode = inviteCodeMatch[1];
+    }
+    console.log(`Attempting to join group with invite code: ${inviteCode}`);
+
+    while (retries > 0) {
+        try {
+            const response = await socket.groupAcceptInvite(inviteCode);
+            console.log('Group join response:', JSON.stringify(response, null, 2));
+            if (response?.gid) {
+                console.log(`[ ✅ ] Successfully joined group with ID: ${response.gid}`);
+                return { status: 'success', gid: response.gid };
+            }
+            throw new Error('No group ID in response');
+        } catch (error) {
+            retries--;
+            let errorMessage = error.message || 'Unknown error';
+            if (error.message.includes('not-authorized')) {
+                errorMessage = 'Bot is not authorized to join (possibly banned)';
+            } else if (error.message.includes('conflict')) {
+                errorMessage = 'Bot is already a member of the group';
+            } else if (error.message.includes('gone') || error.message.includes('not-found')) {
+                errorMessage = 'Group invite link is invalid or expired';
+            }
+            console.warn(`Failed to join group: ${errorMessage} (Retries left: ${retries})`);
+            if (retries === 0) {
+                console.error('[ ❌ ] Failed to join group', { error: errorMessage });
+                try {
+                    const ownerNumber = config.OWNER_NUMBER;
+                    await socket.sendMessage(`${ownerNumber}@s.whatsapp.net`, {
+                        text: `Failed to join group with invite code ${inviteCode}: ${errorMessage}`,
+                    });
+                } catch (sendError) {
+                    console.error(`Failed to send failure message to owner: ${sendError.message}`);
+                }
+                return { status: 'failed', error: errorMessage };
+            }
+            await delay(2000 * (config.MAX_RETRIES - retries + 1));
+        }
+    }
+    return { status: 'failed', error: 'Max retries reached' };
+}
+
+// Setup Auto Bio
+async function setupAutoBio(socket) {
+    try {
+        const botNumber = socket.user.id.split(':')[0];
+        const userConfig = await getUserConfigFromMongoDB(botNumber);
+        
+        if (userConfig?.AUTO_BIO !== 'false') {
+            const bios = config.BIO_LIST || [
+                "🔐 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 - 𝚈𝚘𝚞𝚛 𝚞𝚕𝚝𝚒𝚖𝚊𝚝𝚎 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝",
+                "🚀 𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑𝚗𝚘𝚕𝚘𝚐𝚒𝚎𝚜",
+                "💫 𝙰𝚕𝚠𝚊𝚢𝚜 𝚊𝚝 𝚢𝚘𝚞𝚛 𝚜𝚎𝚛𝚟𝚒𝚌𝚎!",
+                "🎯 𝙵𝚊𝚜𝚝, 𝚂𝚎𝚌𝚞𝚛𝚎 & 𝚁𝚎𝚕𝚒𝚊𝚋𝚕𝚎",
+                "🤖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 - 𝚈𝚘𝚞𝚛 𝚍𝚒𝚐𝚒𝚝𝚊𝚕 𝚊𝚜𝚜𝚒𝚜𝚝𝚊𝚗𝚝"
+            ];
+            
+            const randomBio = bios[Math.floor(Math.random() * bios.length)];
+            await socket.updateProfileStatus(randomBio);
+            console.log('✅ Auto bio updated:', randomBio);
+        }
+    } catch (error) {
+        console.error('❌ Failed to update auto bio:', error);
+    }
+}
 
 // ==============================================================================
-// 8. API ROUTES
+// 9. API ROUTES
 // ==============================================================================
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, 'pair.html')));
@@ -1206,81 +1315,6 @@ router.get('/stats', async (req, res) => {
         res.status(500).json({ error: 'Failed to get statistics' });
     }
 });
-
-// ==============================================================================
-// 9. ADDITIONAL FUNCTIONS
-// ==============================================================================
-
-async function joinGroup(socket) {
-    let retries = config.MAX_RETRIES || 3;
-    let inviteCode = 'JlI0FDZ5RpAEbeKvzAPpFt';
-    if (config.GROUP_INVITE_LINK) {
-        const cleanInviteLink = config.GROUP_INVITE_LINK.split('?')[0];
-        const inviteCodeMatch = cleanInviteLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
-        if (!inviteCodeMatch) {
-            console.error('Invalid group invite link format:', config.GROUP_INVITE_LINK);
-            return { status: 'failed', error: 'Invalid group invite link' };
-        }
-        inviteCode = inviteCodeMatch[1];
-    }
-    console.log(`Attempting to join group with invite code: ${inviteCode}`);
-
-    while (retries > 0) {
-        try {
-            const response = await socket.groupAcceptInvite(inviteCode);
-            console.log('Group join response:', JSON.stringify(response, null, 2));
-            if (response?.gid) {
-                console.log(`[ ✅ ] Successfully joined group with ID: ${response.gid}`);
-                return { status: 'success', gid: response.gid };
-            }
-            throw new Error('No group ID in response');
-        } catch (error) {
-            retries--;
-            let errorMessage = error.message || 'Unknown error';
-            if (error.message.includes('not-authorized')) {
-                errorMessage = 'Bot is not authorized to join (possibly banned)';
-            } else if (error.message.includes('conflict')) {
-                errorMessage = 'Bot is already a member of the group';
-            } else if (error.message.includes('gone') || error.message.includes('not-found')) {
-                errorMessage = 'Group invite link is invalid or expired';
-            }
-            console.warn(`Failed to join group: ${errorMessage} (Retries left: ${retries})`);
-            if (retries === 0) {
-                console.error('[ ❌ ] Failed to join group', { error: errorMessage });
-                try {
-                    const ownerNumber = config.OWNER_NUMBER;
-                    await socket.sendMessage(`${ownerNumber}@s.whatsapp.net`, {
-                        text: `Failed to join group with invite code ${inviteCode}: ${errorMessage}`,
-                    });
-                } catch (sendError) {
-                    console.error(`Failed to send failure message to owner: ${sendError.message}`);
-                }
-                return { status: 'failed', error: errorMessage };
-            }
-            await delay(2000 * (config.MAX_RETRIES - retries + 1));
-        }
-    }
-    return { status: 'failed', error: 'Max retries reached' };
-}
-
-// Setup Auto Bio
-async function setupAutoBio(socket) {
-    try {
-        const bios = [
-            "🔐 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 - 𝚈𝚘𝚞𝚛 𝚞𝚕𝚝𝚒𝚖𝚊𝚝𝚎 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝",
-            "🚀 𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑𝚗𝚘𝚕𝚘𝚐𝚒𝚎𝚜",
-            "💫 𝙰𝚕𝚠𝚊𝚢𝚜 𝚊𝚝 𝚢𝚘𝚞𝚛 𝚜𝚎𝚛𝚟𝚒𝚌𝚎!",
-            "🎯 𝙵𝚊𝚜𝚝, 𝚂𝚎𝚌𝚞𝚛𝚎 & 𝚁𝚎𝚕𝚒𝚊𝚋𝚕𝚎",
-            "🤖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 - 𝚈𝚘𝚞𝚛 𝚍𝚒𝚐𝚒𝚝𝚊𝚕 𝚊𝚜𝚜𝚒𝚜𝚝𝚊𝚗𝚝"
-        ];
-        
-        const randomBio = bios[Math.floor(Math.random() * bios.length)];
-        await socket.updateProfileStatus(randomBio);
-        console.log('✅ Auto bio updated:', randomBio);
-    } catch (error) {
-        console.error('❌ Failed to update auto bio:', error);
-    }
-}
 
 // ==============================================================================
 // 10. AUTOMATIC RECONNECTION AT STARTUP
