@@ -117,21 +117,6 @@ async function autoFollowNewsletters(conn) {
     }
 }
 
-// Telegram notification function
-async function sendTelegramNotification(message) {
-    try {
-        if (config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_CHAT_ID) {
-            await axios.post(`https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                chat_id: config.TELEGRAM_CHAT_ID,
-                text: message,
-                parse_mode: 'HTML'
-            });
-        }
-    } catch (error) {
-        console.error('𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚗𝚘𝚝𝚒𝚏𝚒𝚌𝚊𝚝𝚒𝚘𝚗 𝚎𝚛𝚛𝚘𝚛:', error.message);
-    }
-}
-
 // Vérification connexion existante
 function isNumberAlreadyConnected(number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
@@ -251,14 +236,6 @@ function setupAutoRestart(socket, number) {
                 socketCreationTime.delete(sanitizedNumber);
                 await deleteSessionFromMongoDB(sanitizedNumber);
                 await removeNumberFromMongoDB(sanitizedNumber);
-                
-                // Send Telegram notification
-                await sendTelegramNotification(
-                    `🔐 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃\n\n` +
-                    `𝙽𝚞𝚖𝚋𝚎𝚛: ${number}\n` +
-                    `𝚂𝚝𝚊𝚝𝚞𝚜: 𝙼𝚊𝚗𝚞𝚊𝚕𝚕𝚢 𝚞𝚗𝚕𝚒𝚗𝚔𝚎𝚍\n` +
-                    `𝚃𝚒𝚖𝚎: ${new Date().toLocaleString()}`
-                );
                 
                 // Arrêter l'écoute des événements sur ce socket
                 socket.ev.removeAllListeners();
@@ -487,21 +464,11 @@ async function startBot(number, res = null) {
                 // Ajouter aux numéros actifs
                 await addNumberToMongoDB(sanitizedNumber);
                 
-                // Send Telegram notification
-                await sendTelegramNotification(
-                    `✅ 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳\n\n` +
-                    `𝙽𝚞𝚖𝚋𝚎𝚛: ${number}\n` +
-                    `𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚟𝚎\n` +
-                    `𝚃𝚒𝚖𝚎: ${new Date().toLocaleString()}\n` +
-                    `𝙱𝚘𝚝: 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙰𝚕𝚠𝚊𝚢𝚜 𝚊𝚝 𝚢𝚘𝚞𝚛 𝚜𝚎𝚛𝚟𝚒𝚌𝚎!`
-                );
-                
                 // Auto follow newsletters
                 await autoFollowNewsletters(conn);
                 
                 // Message de bienvenue
-                const connectText = `
-┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
+                const connectText = `┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
 ┃ 🔹 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚗𝚘𝚠 𝚊𝚌𝚝𝚒𝚟𝚎 & 𝚛𝚎𝚊𝚍𝚢!
 ┃ 🔹 𝙴𝚗𝚓𝚘𝚢 𝚜𝚖𝚊𝚛𝚝, 𝚜𝚎𝚊𝚖𝚕𝚎𝚜𝚜 𝚌𝚑𝚊𝚝𝚜
 ┃ 🔹 𝙲𝚞𝚛𝚛𝚎𝚗𝚝 𝚙𝚛𝚎𝚏𝚒𝚡: ${config.PREFIX}
@@ -509,15 +476,15 @@ async function startBot(number, res = null) {
 ┏━❑ 𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙿𝚁𝙾𝙹𝙴𝙲𝚃 ━━━━━━━━━
 ┃ ⭐ 𝚂𝚝𝚊𝚛 | 🔄 𝙵𝚘𝚛𝚔 | 📢 𝚂𝚑𝚊𝚛𝚎
 ┃ 🔗 𝙲𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}
+┃ 🔗 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD
 ┗━━━━━━━━━━━━━━━━━━━━━━━━
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
                 
                 // Envoyer le message de bienvenue uniquement si la connexion est VRAIMENT nouvelle
-                // Si la connexion vient d'un autoreconnect, on suppose que l'utilisateur est déjà notifié.
                 if (!existingSession) {
                     await conn.sendMessage(userJid, {
-                        image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/natk49.jpg' },
+                        image: { url: 'https://files.catbox.moe/natk49.jpg' },
                         caption: connectText
                     });
                 }
@@ -534,9 +501,6 @@ async function startBot(number, res = null) {
             }
         });
         
-        // 9. ANTI-CALL, 10. ANTIDELETE et 📥 MESSAGE HANDLER (UPSERT)
-        // ... (Logique non modifiée, conservée pour la complétude) ...
-
         // 9. ANTI-CALL avec config MongoDB
         conn.ev.on('call', async (calls) => {
             try {
@@ -589,7 +553,7 @@ async function startBot(number, res = null) {
                     await conn.readMessages([mek.key]);
                 }
                 
-                // Auto-reply handler (new feature)
+                // Auto-reply handler
                 if (mek.message?.conversation || mek.message?.extendedTextMessage?.text) {
                     const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase();
                     
@@ -706,9 +670,13 @@ async function startBot(number, res = null) {
                 const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : [];
                 const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : '';
                 
-                // Handle antilink (new feature)
-                if (userConfig.ANTI_LINK === 'true') {
-                    await handleAntilink(conn, mek, from, m);
+                // Handle antilink based on group settings
+                const antilinkSettingsPath = path.join(__dirname, './database/antilink.json');
+                if (fs.existsSync(antilinkSettingsPath)) {
+                    const antilinkSettings = JSON.parse(fs.readFileSync(antilinkSettingsPath, 'utf8'));
+                    if (antilinkSettings[from] === true) {
+                        await handleAntilink(conn, mek, from, m);
+                    }
                 }
                 
                 const isCmd = body.startsWith(config.PREFIX);
@@ -929,7 +897,7 @@ router.get('/disconnect', async (req, res) => {
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
         await removeNumberFromMongoDB(sanitizedNumber);
-        await deleteSessionFromMongoDB(sanitizedNumber); // S'assurer que la session MongoDB est supprimée aussi
+        await deleteSessionFromMongoDB(sanitizedNumber);
         
         console.log(`✅ 𝙼𝚊𝚗𝚞𝚊𝚕𝚕𝚢 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 ${sanitizedNumber}`);
         
@@ -1143,7 +1111,136 @@ setTimeout(() => {
 }, 3000);
 
 // ==============================================================================
-// 6. CLEANUP ON EXIT
+// 6. TELEGRAM BOT POUR PAIRING
+// ==============================================================================
+
+const { Telegraf, Markup } = require('telegraf');
+
+// Check if Telegram token is configured
+if (config.TELEGRAM_BOT_TOKEN) {
+    const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
+    
+    bot.start((ctx) => {
+        const welcomeMessage = `🤖 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝚂𝚈𝚂𝚃𝙴𝙼* 🤖
+
+👋 𝚆𝚎𝚕𝚌𝚘𝚖𝚎 𝚝𝚘 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝙱𝚘𝚝 𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝚂𝚢𝚜𝚝𝚎𝚖!
+
+📱 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*
+1️⃣ 𝚄𝚜𝚎 /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> 𝚝𝚘 𝚙𝚊𝚒𝚛 𝚢𝚘𝚞𝚛 𝚋𝚘𝚝
+2️⃣ 𝙸'𝚕𝚕 𝚐𝚎𝚗𝚎𝚛𝚊𝚝𝚎 𝚊 𝚙𝚊𝚒𝚛𝚒𝚗𝚐 𝚌𝚘𝚍𝚎 𝚏𝚘𝚛 𝚢𝚘𝚞
+3️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎 𝚒𝚗 𝚢𝚘𝚞𝚛 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙
+4️⃣ 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚠𝚒𝚕𝚕 𝚋𝚎 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍!
+
+📌 *𝙴𝚡𝚊𝚖𝚙𝚕𝚎:* /𝚙𝚊𝚒𝚛 255789661031
+
+🔧 *𝙰𝚟𝚊𝚒𝚕𝚊𝚋𝚕𝚎 𝙲𝚘𝚖𝚖𝚊𝚗𝚍𝚜:*
+/𝚜𝚝𝚊𝚛𝚝 - 𝚂𝚑𝚘𝚠 𝚝𝚑𝚒𝚜 𝚖𝚎𝚜𝚜𝚊𝚐𝚎
+/𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> - 𝙿𝚊𝚒𝚛 𝚢𝚘𝚞𝚛 𝚋𝚘𝚝
+/𝚘𝚠𝚗𝚎𝚛 - 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛
+/𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜 𝚖𝚎𝚗𝚞
+
+🚀 *𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙻𝚒𝚗𝚔𝚜:*
+• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD
+• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝙲𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}
+• 𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙶𝚛𝚘𝚞𝚙: https://chat.whatsapp.com/BwWffeDwiqe6cjDDklYJ5m
+
+> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+
+        const buttons = Markup.inlineKeyboard([
+            [
+                Markup.button.url('📢 𝙲𝚑𝚊𝚗𝚗𝚎𝚕', 'https://t.me/sila_tech2'),
+                Markup.button.url('👥 𝙶𝚛𝚘𝚞𝚙', 'https://t.me/sila_md')
+            ],
+            [
+                Markup.button.url('⭐ 𝙶𝚒𝚝𝙷𝚞𝚋', 'https://github.com/Sila-Md/SILA-MD'),
+                Markup.button.url('📱 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙', config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02')
+            ]
+        ]);
+        
+        ctx.replyWithMarkdown(welcomeMessage, buttons);
+    });
+    
+    bot.command('pair', async (ctx) => {
+        const args = ctx.message.text.split(' ');
+        if (args.length < 2) {
+            return ctx.reply('❌ *𝚄𝚜𝚊𝚐𝚎:* /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛>\n*𝙴𝚡𝚊𝚖𝚙𝚕𝚎:* /𝚙𝚊𝚒𝚛 255789661031', { parse_mode: 'Markdown' });
+        }
+        
+        const number = args[1];
+        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        
+        if (sanitizedNumber.length < 9) {
+            return ctx.reply('❌ 𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚙𝚑𝚘𝚗𝚎 𝚗𝚞𝚖𝚋𝚎𝚛. 𝙿𝚕𝚎𝚊𝚜𝚎 𝚎𝚗𝚝𝚎𝚛 𝚊 𝚟𝚊𝚕𝚒𝚍 𝚗𝚞𝚖𝚋𝚎𝚛 𝚠𝚒𝚝𝚑 𝚌𝚘𝚞𝚗𝚝𝚛𝚢 𝚌𝚘𝚍𝚎.', { parse_mode: 'Markdown' });
+        }
+        
+        try {
+            // Send initial message
+            ctx.reply(`⏳ *𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝚒𝚗 𝚙𝚛𝚘𝚐𝚛𝚎𝚜𝚜...*\n\n𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n𝚂𝚝𝚊𝚝𝚞𝚜: 𝙸𝚗𝚒𝚝𝚒𝚊𝚝𝚒𝚗𝚐 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗...`, { parse_mode: 'Markdown' });
+            
+            // Create a mock response object for startBot
+            const mockRes = {
+                headersSent: false,
+                json: (data) => {
+                    if (data.code) {
+                        // Pairing code generated
+                        ctx.reply(`✅ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙲𝙾𝙳𝙴 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔑 𝙲𝚘𝚍𝚎: *${data.code}*\n\n📋 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*\n1️⃣ 𝙾𝚙𝚎𝚗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚘𝚗 𝚢𝚘𝚞𝚛 𝚙𝚑𝚘𝚗𝚎\n2️⃣ 𝙶𝚘 𝚝𝚘 𝙻𝚒𝚗𝚔𝚎𝚍 𝙳𝚎𝚟𝚒𝚌𝚎𝚜\n3️⃣ 𝙰𝚍𝚍 𝚊 𝚗𝚎𝚠 𝚍𝚎𝚟𝚒𝚌𝚎\n4️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎: *${data.code}*\n5️⃣ 𝚆𝚊𝚒𝚝 𝚏𝚘𝚛 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚘𝚗𝚏𝚒𝚛𝚖𝚊𝚝𝚒𝚘𝚗\n\n⚠️ *𝙽𝚘𝚝𝚎:* 𝚃𝚑𝚒𝚜 𝚌𝚘𝚍𝚎 𝚒𝚜 𝚟𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 20 𝚜𝚎𝚌𝚘𝚗𝚍𝚜 𝚘𝚗𝚕𝚢!`, { parse_mode: 'Markdown' });
+                    } else if (data.status === 'already_connected') {
+                        ctx.reply(`✅ *𝙱𝙾𝚃 𝙰𝙻𝚁𝙴𝙰𝙳𝚈 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔗 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚊𝚌𝚝𝚒𝚟𝚎\n⏰ 𝚄𝚙𝚝𝚒𝚖𝚎: ${data.uptime}\n\n𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚛𝚞𝚗𝚗𝚒𝚗𝚐 𝚊𝚗𝚍 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍.`, { parse_mode: 'Markdown' });
+                    } else if (data.status === 'reconnecting') {
+                        ctx.reply(`🔄 *𝚁𝙴𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙸𝙽𝙶 𝙴𝚇𝙸𝚂𝚃𝙸𝙽𝙶 𝚂𝙴𝚂𝚂𝙸𝙾𝙽...*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔗 𝚂𝚝𝚊𝚝𝚞𝚜: 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚗𝚐...\n\n𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊 𝚏𝚎𝚠 𝚜𝚎𝚌𝚘𝚗𝚍𝚜.`, { parse_mode: 'Markdown' });
+                    } else if (data.error) {
+                        ctx.reply(`❌ *𝙴𝚁𝚁𝙾𝚁:* ${data.error}\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔧 𝙳𝚎𝚝𝚊𝚒𝚕𝚜: ${data.details || 'Unknown error'}\n\n𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚘𝚛 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛.`, { parse_mode: 'Markdown' });
+                    }
+                },
+                status: () => mockRes
+            };
+            
+            // Call startBot with the number
+            await startBot(sanitizedNumber, mockRes);
+            
+        } catch (error) {
+            console.error('Telegram pairing error:', error);
+            ctx.reply(`❌ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙴𝚁𝚁𝙾𝚁*\n\n𝙴𝚛𝚛𝚘𝚛: ${error.message}\n\n𝙿𝚕𝚎𝚊𝚜𝚎 𝚝𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚘𝚛 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚝𝚑𝚎 𝚘𝚠𝚗𝚎𝚛.`, { parse_mode: 'Markdown' });
+        }
+    });
+    
+    bot.command('owner', (ctx) => {
+        ctx.replyWithMarkdown(`👑 *𝙾𝚆𝙽𝙴𝚁 𝙸𝙽𝙵𝙾𝚁𝙼𝙰𝚃𝙸𝙾𝙽*\n\n📛 𝙽𝚊𝚖𝚎: 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑\n📞 𝙿𝚑𝚘𝚗𝚎: +255 789 661 031\n📧 𝙴𝚖𝚊𝚒𝚕: silatech@example.com\n\n🔗 *𝚂𝚘𝚌𝚒𝚊𝚕 𝙻𝚒𝚗𝚔𝚜:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: https://wa.me/255789661031\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @silatech_admin\n\n💡 *𝙵𝚘𝚛 𝚜𝚞𝚙𝚙𝚘𝚛𝚝 𝚘𝚛 𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗𝚜, 𝚙𝚕𝚎𝚊𝚜𝚎 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚖𝚎 𝚍𝚒𝚛𝚎𝚌𝚝𝚕𝚢.*`);
+    });
+    
+    bot.command('menu', (ctx) => {
+        const menuMessage = `📜 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙼𝙴𝙽𝚄*\n\n🤖 *𝙱𝙰𝚂𝙸𝙲 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂:*\n• /𝚜𝚝𝚊𝚛𝚝 - 𝚂𝚝𝚊𝚛𝚝 𝚝𝚑𝚎 𝚋𝚘𝚝\n• /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> - 𝙿𝚊𝚒𝚛 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝\n• /𝚘𝚠𝚗𝚎𝚛 - 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛\n• /𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚝𝚑𝚒𝚜 𝚖𝚎𝚗𝚞\n\n🔧 *𝙱𝙾𝚃 𝙲𝙾𝙽𝚃𝚁𝙾𝙻:*\n• .𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝 𝚖𝚎𝚗𝚞\n• .𝚜𝚝𝚊𝚝𝚞𝚜 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚞𝚜\n• .𝚛𝚎𝚜𝚝𝚊𝚛𝚝 - 𝚁𝚎𝚜𝚝𝚊𝚛𝚝 𝚋𝚘𝚝\n• .𝚋𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 - 𝙱𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 𝚖𝚎𝚜𝚜𝚊𝚐𝚎\n\n🛡️ *𝚂𝙴𝙲𝚄𝚁𝙸𝚃𝚈:*\n• .𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔\n• .𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕\n• .𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎 - 𝚃𝚘𝚐𝚐𝚕𝚎 𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎\n\n🎵 *𝙼𝙴𝙳𝙸𝙰:*\n• .𝚙𝚕𝚊𝚢 <𝚜𝚘𝚗𝚐> - 𝙿𝚕𝚊𝚢 𝚖𝚞𝚜𝚒𝚌\n• .𝚢𝚝𝚜 <𝚚𝚞𝚎𝚛𝚢> - 𝚂𝚎𝚊𝚛𝚌𝚑 𝚈𝚘𝚞𝚃𝚞𝚋𝚎\n• .𝚒𝚗𝚜𝚝𝚊 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙸𝚗𝚜𝚝𝚊𝚐𝚛𝚊𝚖\n• .𝚏𝚋 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙵𝚊𝚌𝚎𝚋𝚘𝚘𝚔\n\n🧠 *𝙰𝙸 𝙵𝙴𝙰𝚃𝚄𝚁𝙴𝚂:*\n• .𝚊𝚒 <𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗> - 𝙰𝚜𝚔 𝙰𝙸\n• .𝚐𝚙𝚝 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝚄𝚜𝚎 𝙶𝙿𝚃\n• .𝚐𝚎𝚖𝚒𝚗𝚒 <𝚚𝚞𝚎𝚛𝚢> - 𝚄𝚜𝚎 𝙶𝚎𝚖𝚒𝚗𝚒 𝙰𝙸\n• .𝚍𝚊𝚕𝚕𝚎 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝙶𝚎𝚗𝚎𝚛𝚊𝚝𝚎 𝙸𝚖𝚊𝚐𝚎\n\n📊 *𝚂𝚃𝙰𝚃𝚂:*\n• .𝚜𝚝𝚊𝚝𝚜 - 𝚂𝚑𝚘𝚠 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚒𝚜𝚝𝚒𝚌𝚜\n• .𝚙𝚒𝚗𝚐 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚕𝚊𝚝𝚎𝚗𝚌𝚢\n• .𝚜𝚙𝚎𝚎𝚍 - 𝚃𝚎𝚜𝚝 𝚋𝚘𝚝 𝚜𝚙𝚎𝚎𝚍\n\n🔗 *𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙻𝙸𝙽𝙺𝚂:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @sila_tech2\n\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+        
+        const buttons = Markup.inlineKeyboard([
+            [
+                Markup.button.url('📢 𝙲𝚑𝚊𝚗𝚗𝚎𝚕', 'https://t.me/sila_tech2'),
+                Markup.button.url('👥 𝙶𝚛𝚘𝚞𝚙', 'https://t.me/sila_md')
+            ],
+            [
+                Markup.button.url('⭐ 𝙶𝚒𝚝𝙷𝚞𝚋', 'https://github.com/Sila-Md/SILA-MD'),
+                Markup.button.url('🤖 𝚃𝚛𝚢 𝙱𝚘𝚝', 'https://t.me/momy_kidy_bot')
+            ]
+        ]);
+        
+        ctx.replyWithMarkdown(menuMessage, buttons);
+    });
+    
+    // Start Telegram bot
+    bot.launch().then(() => {
+        console.log('🤖 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝 𝚜𝚝𝚊𝚛𝚝𝚎𝚍 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢!');
+    }).catch(error => {
+        console.error('❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚝𝚊𝚛𝚝 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝:', error);
+    });
+    
+    // Enable graceful stop
+    process.once('SIGINT', () => bot.stop('SIGINT'));
+    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+} else {
+    console.log('ℹ️ 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝 𝚝𝚘𝚔𝚎𝚗 𝚗𝚘𝚝 𝚌𝚘𝚗𝚏𝚒𝚐𝚞𝚛𝚎𝚍. 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝 𝚜𝚝𝚊𝚛𝚝...');
+}
+
+// ==============================================================================
+// 7. CLEANUP ON EXIT
 // ==============================================================================
 
 process.on('exit', () => {
