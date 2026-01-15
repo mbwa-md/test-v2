@@ -19,7 +19,7 @@ cmd({
 
         // Try first API
         try {
-            const apiUrl = `https://api.nekolabs.my.id/downloader/youtube/play/v1?q=${encodeURIComponent(query)}`;
+            const apiUrl = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
             const res = await axios.get(apiUrl);
             const data = res.data;
 
@@ -60,7 +60,7 @@ cmd({
         // Fallback API - using existing API from your code
         try {
             // Search YouTube first to get URL
-            const searchUrl = `https://api.nekolabs.my.id/api/ytsearch?q=${encodeURIComponent(query)}`;
+            const searchUrl = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
             const searchRes = await axios.get(searchUrl);
             
             if (searchRes.data?.status && searchRes.data.result?.length > 0) {
@@ -68,7 +68,7 @@ cmd({
                 const ytUrl = video.url;
                 
                 // Download using second API
-                const api = `https://sadiya-tech-apis.vercel.app/download/ytdl?url=${encodeURIComponent(ytUrl)}&format=mp3&apikey=sadiya`;
+                const api = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
                 const apiRes = await axios.get(api);
 
                 if (apiRes.data?.status && apiRes.data.result?.download) {
