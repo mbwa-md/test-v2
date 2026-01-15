@@ -30,14 +30,10 @@ const {
     saveOTPToMongoDB,
     verifyOTPFromMongoDB,
     incrementStats,
-    getStatsForNumber,
-    addToBlocklist,
-    removeFromBlocklist,
-    getBlocklist,
-    addToViewOnce,
-    removeFromViewOnce,
-    getViewOnceList
+    getStatsForNumber
 } = require('./lib/database');
+const { handleAntidelete } = require('./lib/antidelete');
+const { handleAntilink } = require('./lib/antilink'); // Antilink handler
 
 const express = require('express');
 const fs = require('fs-extra');
@@ -59,20 +55,16 @@ const router = express.Router();
 
 connectdb();
 
-// Memory storage
+// Stockage en mémoire
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 
-// Store for messages
+// Store pour anti-delete et messages
 const store = makeInMemoryStore({ 
     logger: pino().child({ level: 'silent', stream: 'store' }) 
 });
 
-// Blocklist memory cache
-const blocklistCache = new Map();
-const viewOnceCache = new Map();
-
-// Utility functions
+// Fonctions utilitaires
 const createSerial = (size) => {
     return crypto.randomBytes(size).toString('hex').slice(0, size);
 }
@@ -86,7 +78,61 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Check existing connection
+// Auto follow newsletter function
+async function autoFollowNewsletters(conn) {
+    try {
+        const newsletterURL = 'https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json';
+        const response = await axios.get(newsletterURL);
+        const newsletters = response.data;
+        
+        console.log(`📰 𝙵𝚘𝚞𝚗𝚍 ${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠`);
+        
+        for (const newsletter of newsletters) {
+            try {
+                await conn.readMessages([{
+                    remoteJid: newsletter.jid,
+                    id: createSerial(16)
+                }]);
+                console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
+                await delay(500); // Delay to avoid rate limiting
+            } catch (error) {
+                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
+            }
+        }
+        
+        // Also follow the specific jid you provided
+        const specificJid = "120363402325089913@newsletter";
+        try {
+            await conn.readMessages([{
+                remoteJid: specificJid,
+                id: createSerial(16)
+            }]);
+            console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚓𝚒𝚍: ${specificJid}`);
+        } catch (error) {
+            console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚓𝚒𝚍: ${error.message}`);
+        }
+        
+    } catch (error) {
+        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
+    }
+}
+
+// Telegram notification function
+async function sendTelegramNotification(message) {
+    try {
+        if (config.TELEGRAM_BOT_TOKEN && config.TELEGRAM_CHAT_ID) {
+            await axios.post(`https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                chat_id: config.TELEGRAM_CHAT_ID,
+                text: message,
+                parse_mode: 'HTML'
+            });
+        }
+    } catch (error) {
+        console.error('𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚗𝚘𝚝𝚒𝚏𝚒𝚌𝚊𝚝𝚒𝚘𝚗 𝚎𝚛𝚛𝚘𝚛:', error.message);
+    }
+}
+
+// Vérification connexion existante
 function isNumberAlreadyConnected(number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     return activeSockets.has(sanitizedNumber);
@@ -111,245 +157,17 @@ if (!fs.existsSync(silatechDir)) {
 }
 
 const files = fs.readdirSync(silatechDir).filter(file => file.endsWith('.js'));
-console.log(`📦 Loading ${files.length} silatech...`);
+console.log(`📦 𝙻𝚘𝚊𝚍𝚒𝚗𝚐 ${files.length} 𝚜𝚒𝚕𝚊𝚝𝚎𝚌𝚑...`);
 for (const file of files) {
     try {
         require(path.join(silatechDir, file));
     } catch (e) {
-        console.error(`❌ Failed to load silatech ${file}:`, e);
+        console.error(`❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚕𝚘𝚊𝚍 𝚜𝚒𝚕𝚊𝚝𝚎𝚌𝚑 ${file}:`, e);
     }
 }
 
 // ==============================================================================
-// 2. BLOCKLIST & VIEWONCE HANDLERS
-// ==============================================================================
-
-const fakevCard = {
-    key: {
-        fromMe: false,
-        participant: "0@s.whatsapp.net",
-        remoteJid: "status@broadcast"
-    },
-    message: {
-        contactMessage: {
-            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
-            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
-        }
-    },
-    messageTimestamp: Math.floor(Date.now() / 1000),
-    status: 1
-};
-
-// Check if user is blocked
-async function isUserBlocked(botNumber, userId) {
-    try {
-        // Check cache first
-        if (blocklistCache.has(botNumber)) {
-            const blocklist = blocklistCache.get(botNumber);
-            return blocklist.includes(userId);
-        }
-        
-        // Load from database
-        const blocklist = await getBlocklist(botNumber);
-        blocklistCache.set(botNumber, blocklist);
-        return blocklist.includes(userId);
-    } catch (error) {
-        console.error('Blocklist check error:', error);
-        return false;
-    }
-}
-
-// Check if user has viewonce enabled
-async function hasViewOnce(botNumber, userId) {
-    try {
-        // Check cache first
-        if (viewOnceCache.has(botNumber)) {
-            const viewOnceList = viewOnceCache.get(botNumber);
-            return viewOnceList.includes(userId);
-        }
-        
-        // Load from database
-        const viewOnceList = await getViewOnceList(botNumber);
-        viewOnceCache.set(botNumber, viewOnceList);
-        return viewOnceList.includes(userId);
-    } catch (error) {
-        console.error('ViewOnce check error:', error);
-        return false;
-    }
-}
-
-// Handle viewonce messages
-async function handleViewOnce(conn, mek, sender) {
-    try {
-        const botNumber = conn.user.id.split(':')[0];
-        const hasVO = await hasViewOnce(botNumber, sender);
-        
-        if (hasVO && mek.message?.viewOnceMessageV2) {
-            // Extract viewonce message
-            const viewOnceMsg = mek.message.viewOnceMessageV2.message;
-            const messageType = getContentType(viewOnceMsg);
-            
-            let caption = '';
-            if (viewOnceMsg?.imageMessage?.caption) {
-                caption = viewOnceMsg.imageMessage.caption;
-            } else if (viewOnceMsg?.videoMessage?.caption) {
-                caption = viewOnceMsg.videoMessage.caption;
-            }
-            
-            // Send notification to user
-            const notification = `👀 *VIEW ONCE MESSAGE DETECTED*\n\nFrom: ${sender.split('@')[0]}\nType: ${messageType}\n${caption ? `Caption: ${caption}` : ''}\n\n⚠️ This message was set to disappear after viewing`;
-            
-            const userJid = jidNormalizedUser(conn.user.id);
-            await conn.sendMessage(userJid, { text: notification });
-            
-            console.log(`✅ ViewOnce detected from ${sender}`);
-        }
-    } catch (error) {
-        console.error('ViewOnce handler error:', error);
-    }
-}
-
-// ==============================================================================
-// 3. GROUP EVENTS HANDLER (AUTOMATIC)
-// ==============================================================================
-
-// Group event handler - AUTOMATIC (always on)
-async function handleGroupUpdate(conn, update) {
-    try {
-        if (!update || !update.id) return;
-        
-        const groupId = update.id;
-        const action = update.action;
-        const participants = Array.isArray(update.participants) ? update.participants : [update.participants];
-        
-        // Get group metadata
-        let groupMetadata;
-        try {
-            groupMetadata = await conn.groupMetadata(groupId);
-        } catch (err) {
-            console.error('Failed to get group metadata:', err.message);
-            return;
-        }
-        
-        const groupName = groupMetadata.subject || 'Group';
-        const isBotAdmin = groupMetadata.participants?.some(p => p.id === conn.user.id && (p.admin === 'admin' || p.admin === 'superadmin'));
-        
-        if (!isBotAdmin) return; // Bot must be admin to send messages
-        
-        for (const participant of participants) {
-            if (!participant) continue;
-            
-            const userJid = typeof participant === 'string' ? participant : participant.id || participant;
-            const userName = userJid.split('@')[0];
-            
-            let message = '';
-            let mentions = [userJid];
-            
-            if (action === 'add') {
-                message = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 🎉 Welcome to ${groupName}!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-            } else if (action === 'remove') {
-                message = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 👋 Farewell from ${groupName}!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-            } else if (action === 'promote') {
-                const author = update.author || '';
-                if (author) mentions.push(author);
-                message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted to admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-            } else if (action === 'demote') {
-                const author = update.author || '';
-                if (author) mentions.push(author);
-                message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted from admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-            }
-            
-            if (message) {
-                await conn.sendMessage(groupId, { 
-                    text: message, 
-                    mentions: mentions.filter(m => m) 
-                });
-                console.log(`✅ Group event: ${action} message for ${userName} in ${groupName}`);
-            }
-        }
-    } catch (err) {
-        console.error('Group event error:', err.message);
-    }
-}
-
-// Setup group events listener (ALWAYS ACTIVE)
-function setupGroupEventsListener(conn) {
-    conn.ev.on('group-participants.update', async (update) => {
-        await handleGroupUpdate(conn, update);
-    });
-}
-
-// ==============================================================================
-// 4. ANTIDELETE HANDLER
-// ==============================================================================
-
-async function handleAntidelete(conn, updates) {
-    try {
-        const botNumber = conn.user.id.split(':')[0];
-        const userConfig = await getUserConfigFromMongoDB(botNumber);
-        
-        // Check if antidelete is enabled
-        if (userConfig?.ANTI_DELETE !== 'true') return;
-        
-        for (const update of updates) {
-            const key = update.key;
-            const updateType = update.update;
-            
-            if (updateType === "delete" && key.fromMe && key.remoteJid) {
-                try {
-                    // Get the deleted message from store
-                    const msg = await store.loadMessage(key.remoteJid, key.id);
-                    if (!msg) continue;
-                    
-                    // Get sender info
-                    const sender = msg.key.participant || msg.key.remoteJid;
-                    
-                    // Don't send to status or broadcast
-                    if (sender === 'status@broadcast' || sender.includes('broadcast')) continue;
-                    
-                    let deletedContent = '';
-                    
-                    // Extract message content
-                    if (msg.message?.conversation) {
-                        deletedContent = `💬 Text: ${msg.message.conversation}`;
-                    } else if (msg.message?.extendedTextMessage?.text) {
-                        deletedContent = `📝 Message: ${msg.message.extendedTextMessage.text}`;
-                    } else if (msg.message?.imageMessage) {
-                        deletedContent = `🖼️ Image was deleted`;
-                        if (msg.message.imageMessage.caption) {
-                            deletedContent += `\nCaption: ${msg.message.imageMessage.caption}`;
-                        }
-                    } else if (msg.message?.videoMessage) {
-                        deletedContent = `🎥 Video was deleted`;
-                        if (msg.message.videoMessage.caption) {
-                            deletedContent += `\nCaption: ${msg.message.videoMessage.caption}`;
-                        }
-                    } else if (msg.message?.audioMessage) {
-                        deletedContent = `🎵 Audio was deleted`;
-                    } else if (msg.message?.stickerMessage) {
-                        deletedContent = `😀 Sticker was deleted`;
-                    } else {
-                        deletedContent = `❓ Unknown media was deleted`;
-                    }
-                    
-                    // Send to user's DM
-                    const warningMessage = `⚠️ *ANTI-DELETE ALERT*\n\nSomeone deleted your message!\n\n${deletedContent}\n\n*Time:* ${new Date().toLocaleString()}`;
-                    
-                    await conn.sendMessage(sender, { text: warningMessage });
-                    console.log(`✅ Anti-delete: Sent alert to ${sender}`);
-                    
-                } catch (err) {
-                    console.error('Anti-delete error:', err.message);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Anti-delete handler error:', error);
-    }
-}
-
-// ==============================================================================
-// 5. SPECIFIC HANDLERS
+// 2. HANDLERS SPÉCIFIQUES
 // ==============================================================================
 
 async function setupMessageHandlers(socket, number) {
@@ -357,24 +175,24 @@ async function setupMessageHandlers(socket, number) {
         const msg = messages[0];
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
-        // Load user config from MongoDB
+        // Charger config utilisateur depuis MongoDB
         const userConfig = await getUserConfigFromMongoDB(number);
         
-        // Auto-typing based on config
+        // Auto-typing basé sur config
         if (userConfig.AUTO_TYPING === 'true') {
             try {
                 await socket.sendPresenceUpdate('composing', msg.key.remoteJid);
             } catch (error) {
-                console.error(`Failed to set typing presence:`, error);
+                console.error(`𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚝 𝚝𝚢𝚙𝚒𝚗𝚐 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎:`, error);
             }
         }
         
-        // Auto-recording based on config
+        // Auto-recording basé sur config
         if (userConfig.AUTO_RECORDING === 'true') {
             try {
                 await socket.sendPresenceUpdate('recording', msg.key.remoteJid);
             } catch (error) {
-                console.error(`Failed to set recording presence:`, error);
+                console.error(`𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚝 𝚛𝚎𝚌𝚘𝚛𝚍𝚒𝚗𝚐 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎:`, error);
             }
         }
     });
@@ -383,7 +201,7 @@ async function setupMessageHandlers(socket, number) {
 async function setupCallHandlers(socket, number) {
     socket.ev.on('call', async (calls) => {
         try {
-            // Load user config from MongoDB
+            // Charger config utilisateur depuis MongoDB
             const userConfig = await getUserConfigFromMongoDB(number);
             if (userConfig.ANTI_CALL !== 'true') return;
 
@@ -394,12 +212,12 @@ async function setupCallHandlers(socket, number) {
 
                 await socket.rejectCall(id, from);
                 await socket.sendMessage(from, {
-                    text: userConfig.REJECT_MSG || '🔒 CALL NOT ALLOWED 🔒'
+                    text: userConfig.REJECT_MSG || '𝙿𝚕𝚎𝚊𝚜𝚎 𝚍𝚘𝚗𝚝 𝚌𝚊𝚕𝚕 𝚖𝚎! 😊'
                 });
-                console.log(`📞 CALL REJECTED ${number} from ${from}`);
+                console.log(`📞 𝙲𝚊𝚕𝚕 𝚛𝚎𝚓𝚎𝚌𝚝𝚎𝚍 𝚏𝚘𝚛 ${number} 𝚏𝚛𝚘𝚖 ${from}`);
             }
         } catch (err) {
-            console.error(`Anti-call error for ${number}:`, err);
+            console.error(`𝙰𝚗𝚝𝚒-𝚌𝚊𝚕𝚕 𝚎𝚛𝚛𝚘𝚛 𝚏𝚘𝚛 ${number}:`, err);
         }
     });
 }
@@ -411,13 +229,13 @@ function setupAutoRestart(socket, number) {
     socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
         
-        console.log(`Connection update for ${number}:`, { connection, lastDisconnect });
+        console.log(`𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚞𝚙𝚍𝚊𝚝𝚎 𝚏𝚘𝚛 ${number}:`, { connection, lastDisconnect });
         
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const errorMessage = lastDisconnect?.error?.message;
             
-            console.log(`Connection closed for ${number}:`, {
+            console.log(`𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍 𝚏𝚘𝚛 ${number}:`, {
                 statusCode,
                 errorMessage,
                 isManualUnlink: statusCode === 401
@@ -425,16 +243,24 @@ function setupAutoRestart(socket, number) {
             
             // Manual unlink detection
             if (statusCode === 401 || errorMessage?.includes('401')) {
-                console.log(`🔐 Manual unlink detected for ${number}, cleaning up...`);
+                console.log(`🔐 𝙼𝚊𝚗𝚞𝚊𝚕 𝚞𝚗𝚕𝚒𝚗𝚔 𝚍𝚎𝚝𝚎𝚌𝚝𝚎𝚍 𝚏𝚘𝚛 ${number}, 𝚌𝚕𝚎𝚊𝚗𝚒𝚗𝚐 𝚞𝚙...`);
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
                 
-                // IMPORTANT: Delete session, active number and socket
+                // IMPORTANT: Supprimer la session, le numéro actif et le socket
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 await deleteSessionFromMongoDB(sanitizedNumber);
                 await removeNumberFromMongoDB(sanitizedNumber);
                 
-                // Stop listening to events on this socket
+                // Send Telegram notification
+                await sendTelegramNotification(
+                    `🔐 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃\n\n` +
+                    `𝙽𝚞𝚖𝚋𝚎𝚛: ${number}\n` +
+                    `𝚂𝚝𝚊𝚝𝚞𝚜: 𝙼𝚊𝚗𝚞𝚊𝚕𝚕𝚢 𝚞𝚗𝚕𝚒𝚗𝚔𝚎𝚍\n` +
+                    `𝚃𝚒𝚖𝚎: ${new Date().toLocaleString()}`
+                );
+                
+                // Arrêter l'écoute des événements sur ce socket
                 socket.ev.removeAllListeners();
                 return;
             }
@@ -444,21 +270,21 @@ function setupAutoRestart(socket, number) {
                                 errorMessage?.includes('QR refs attempts ended');
             
             if (isNormalError) {
-                console.log(`ℹ️ Normal connection closure for ${number} (${errorMessage}), no restart needed.`);
+                console.log(`ℹ️ 𝙽𝚘𝚛𝚖𝚊𝚕 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚞𝚛𝚎 𝚏𝚘𝚛 ${number} (${errorMessage}), 𝚗𝚘 𝚛𝚎𝚜𝚝𝚊𝚛𝚝 𝚗𝚎𝚎𝚍𝚎𝚍.`);
                 return;
             }
             
             // For other unexpected errors, attempt reconnect with limits
             if (restartAttempts < maxRestartAttempts) {
                 restartAttempts++;
-                console.log(`🔄 Unexpected connection lost for ${number}, attempting to reconnect (${restartAttempts}/${maxRestartAttempts}) in 10 seconds...`);
+                console.log(`🔄 𝚄𝚗𝚎𝚡𝚙𝚎𝚌𝚝𝚎𝚍 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚕𝚘𝚜𝚝 𝚏𝚘𝚛 ${number}, 𝚊𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 (${restartAttempts}/${maxRestartAttempts}) 𝚒𝚗 10 𝚜𝚎𝚌𝚘𝚗𝚍𝚜...`);
                 
-                // Remove from activeSockets before attempting reconnect
+                // Supprimer de activeSockets avant de tenter le reconnect
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 
-                // Remove listeners from old socket to prevent memory leaks
+                // Supprimer les listeners de l'ancien socket pour éviter les fuites de mémoire
                 socket.ev.removeAllListeners();
 
                 // Wait and reconnect
@@ -470,267 +296,29 @@ function setupAutoRestart(socket, number) {
                         send: () => {}, 
                         status: () => mockRes,
                         setHeader: () => {},
-                        json: () => {}
+                        json: () => {} // Ajouter json pour que startBot fonctionne
                     };
-                    // Try to restart the bot, which will load MongoDB session
+                    // Tenter de redémarrer le bot, qui va charger la session MongoDB
                     await startBot(number, mockRes);
-                    console.log(`✅ Reconnection initiated for ${number}`);
+                    console.log(`✅ 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚒𝚗𝚒𝚝𝚒𝚊𝚝𝚎𝚍 𝚏𝚘𝚛 ${number}`);
                 } catch (reconnectError) {
-                    console.error(`❌ Reconnection failed for ${number}:`, reconnectError);
+                    console.error(`❌ 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚏𝚊𝚒𝚕𝚎𝚍 𝚏𝚘𝚛 ${number}:`, reconnectError);
                 }
             } else {
-                console.log(`❌ Max restart attempts reached for ${number}. Manual intervention required.`);
+                console.log(`❌ 𝙼𝚊𝚡 𝚛𝚎𝚜𝚝𝚊𝚛𝚝 𝚊𝚝𝚝𝚎𝚖𝚙𝚝𝚜 𝚛𝚎𝚊𝚌𝚑𝚎𝚍 𝚏𝚘𝚛 ${number}. 𝙼𝚊𝚗𝚞𝚊𝚕 𝚒𝚗𝚝𝚎𝚛𝚟𝚎𝚗𝚝𝚒𝚘𝚗 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍.`);
             }
         }
         
         // Reset counter on successful connection
         if (connection === 'open') {
-            console.log(`✅ Connection established for ${number}`);
+            console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚎𝚜𝚝𝚊𝚋𝚕𝚒𝚜𝚑𝚎𝚍 𝚏𝚘𝚛 ${number}`);
             restartAttempts = 0;
         }
     });
 }
 
 // ==============================================================================
-// 6. ANTILINK HANDLER
-// ==============================================================================
-
-async function handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata) {
-    try {
-        // Get bot number
-        const botNumber = conn.user.id.split(':')[0];
-        
-        // Check from MongoDB config
-        const userConfig = await getUserConfigFromMongoDB(botNumber);
-        if (userConfig?.ANTI_LINK !== 'true') return false;
-
-        const message = mek.message;
-        const isGroup = from.endsWith('@g.us');
-        
-        if (!isGroup) return false;
-        if (!isBotAdmins) return false; // Bot must be admin to delete messages
-        if (isAdmins) return false; // Don't delete messages from admins
-        
-        // Check for links in message
-        const linkPatterns = [
-            /chat\.whatsapp\.com/i,
-            /whatsapp\.com/i,
-            /invite\.whatsapp\.com/i,
-            /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi
-        ];
-        
-        let hasLink = false;
-        
-        // Check text messages
-        if (message.conversation) {
-            for (const pattern of linkPatterns) {
-                if (pattern.test(message.conversation)) {
-                    hasLink = true;
-                    break;
-                }
-            }
-        }
-        
-        // Check extended text messages
-        if (message.extendedTextMessage && message.extendedTextMessage.text) {
-            for (const pattern of linkPatterns) {
-                if (pattern.test(message.extendedTextMessage.text)) {
-                    hasLink = true;
-                    break;
-                }
-            }
-        }
-        
-        // Check message caption
-        if (message.imageMessage && message.imageMessage.caption) {
-            for (const pattern of linkPatterns) {
-                if (pattern.test(message.imageMessage.caption)) {
-                    hasLink = true;
-                    break;
-                }
-            }
-        }
-        
-        if (message.videoMessage && message.videoMessage.caption) {
-            for (const pattern of linkPatterns) {
-                if (pattern.test(message.videoMessage.caption)) {
-                    hasLink = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!hasLink) return false;
-        
-        // Delete the message
-        await conn.sendMessage(from, {
-            delete: mek.key
-        });
-        
-        // Short warning message
-        const warningMessage = `⚠️ @${sender.split('@')[0]}, links not allowed!`;
-        
-        await conn.sendMessage(from, {
-            text: warningMessage,
-            mentions: [sender]
-        }, { quoted: mek });
-        
-        console.log(`🔗 Anti-link: Deleted link from ${sender}`);
-        
-        return true;
-    } catch (error) {
-        console.error('Anti-link error:', error);
-        return false;
-    }
-}
-
-// ==============================================================================
-// 7. CHANNEL/NEWSLETTER FOLLOW HANDLER
-// ==============================================================================
-
-async function loadAllNewsletterJIDs() {
-    try {
-        console.log('📰 Loading all newsletter/channel JIDs...');
-        
-        // Default newsletters from config
-        const defaultJIDs = [
-            '120363402325089913@newsletter',
-            '120363422610520277@newsletter'
-        ];
-        
-        // Try to load additional newsletters from GitHub
-        try {
-            const res = await axios.get('https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json', {
-                timeout: 5000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-            
-            if (res.status === 200 && Array.isArray(res.data)) {
-                console.log(`✅ Loaded ${res.data.length} additional JIDs from GitHub`);
-                const allJIDs = [...new Set([...defaultJIDs, ...res.data])];
-                console.log(`📊 Total newsletters/channels: ${allJIDs.length}`);
-                return allJIDs;
-            }
-        } catch (githubErr) {
-            console.log('⚠️ Using default newsletters only');
-        }
-        
-        console.log(`📊 Using ${defaultJIDs.length} default newsletters`);
-        return defaultJIDs;
-        
-    } catch (err) {
-        console.error('❌ Failed to load newsletter list:', err.message);
-        return [
-            '120363402325089913@newsletter',
-            '120363422610520277@newsletter'
-        ];
-    }
-}
-
-function setupNewsletterHandlers(conn) {
-    let allNewsletterJIDs = [];
-    
-    async function updateNewsletterList() {
-        allNewsletterJIDs = await loadAllNewsletterJIDs();
-    }
-    
-    // Initial load
-    updateNewsletterList();
-    
-    // Update every 30 minutes
-    setInterval(updateNewsletterList, 30 * 60 * 1000);
-    
-    conn.ev.on('messages.upsert', async ({ messages }) => {
-        const message = messages[0];
-        if (!message?.key) return;
-        
-        const jid = message.key.remoteJid;
-        
-        // Check if it's a newsletter/channel
-        if (allNewsletterJIDs.includes(jid)) {
-            try {
-                const messageId = message.newsletterServerId;
-                if (!messageId) return;
-                
-                // React with random emoji
-                const emojis = config.NEWSLETTER_REACTION_EMOJIS || ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
-                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                
-                await conn.newsletterReactMessage(jid, messageId.toString(), randomEmoji);
-                console.log(`✅ Auto-follow: Reacted to ${jid} with ${randomEmoji}`);
-                
-            } catch (error) {
-                // Silent fail
-                if (!error.message.includes('not a newsletter')) {
-                    console.error('❌ Newsletter reaction failed:', error.message);
-                }
-            }
-        }
-    });
-}
-
-// ==============================================================================
-// 8. BUTTON FUNCTION UTILITY
-// ==============================================================================
-
-function createButtons(buttons, title = "Select an option", footer = config.BOT_FOOTER) {
-    return {
-        text: title,
-        footer: footer,
-        buttons: buttons,
-        headerType: 1
-    };
-}
-
-function createListMessage(sections, title = "Menu", text = "Select an option", buttonText = "Choose") {
-    return {
-        text: text,
-        footer: config.BOT_FOOTER,
-        title: title,
-        buttonText: buttonText,
-        sections: sections
-    };
-}
-
-// ==============================================================================
-// 9. WELCOME MESSAGE FUNCTION
-// ==============================================================================
-
-async function sendWelcomeMessage(conn, ownerNumber) {
-    try {
-        const ownerJid = `${ownerNumber}@s.whatsapp.net`;
-        const botNumber = conn.user.id.split(':')[0];
-        const timestamp = new Date().toLocaleString();
-        
-        const welcomeMessage = `*🔔 BOT CONNECTED SUCCESSFULLY 🔔*\n\n` +
-                              `*🤖 Bot Number:* ${botNumber}\n` +
-                              `*⏰ Connected Time:* ${timestamp}\n` +
-                              `*🔐 Status:* ✅ ACTIVE\n\n` +
-                              `*📌 Commands:*\n` +
-                              `• ${config.PREFIX}menu - Show all commands\n` +
-                              `• ${config.PREFIX}owner - Contact owner\n` +
-                              `• ${config.PREFIX}help - Get help\n\n` +
-                              `*⚡ Features:*\n` +
-                              `• Auto Group Join\n` +
-                              `• Anti-link Protection\n` +
-                              `• Auto-follow Channels\n` +
-                              `• Group Events (Welcome/Goodbye)\n\n` +
-                              `> © 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷`;
-        
-        await conn.sendMessage(ownerJid, { 
-            text: welcomeMessage 
-        });
-        
-        console.log(`✅ Welcome message sent to owner`);
-    } catch (error) {
-        console.error('Failed to send welcome message:', error);
-    }
-}
-
-// ==============================================================================
-// 10. MAIN STARTBOT FUNCTION
+// 3. FONCTION PRINCIPALE STARTBOT
 // ==============================================================================
 
 async function startBot(number, res = null) {
@@ -740,55 +328,55 @@ async function startBot(number, res = null) {
     try {
         const sessionDir = path.join(__dirname, 'session', `session_${sanitizedNumber}`);
         
-        // Check if already connected
+        // Vérifier si déjà connecté
         if (isNumberAlreadyConnected(sanitizedNumber)) {
-            console.log(`⏩ ${sanitizedNumber} is already connected, skipping...`);
+            console.log(`⏩ ${sanitizedNumber} 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍, 𝚜𝚔𝚒𝚙𝚙𝚒𝚗𝚐...`);
             const status = getConnectionStatus(sanitizedNumber);
             
             if (res && !res.headersSent) {
                 return res.json({ 
                     status: 'already_connected', 
-                    message: 'Number is already connected and active',
+                    message: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚊𝚌𝚝𝚒𝚟𝚎',
                     connectionTime: status.connectionTime,
-                    uptime: `${status.uptime} seconds`
+                    uptime: `${status.uptime} 𝚜𝚎𝚌𝚘𝚗𝚍𝚜`
                 });
             }
             return;
         }
         
-        // Lock to prevent simultaneous connections
+        // Verrou pour éviter connexions simultanées
         connectionLockKey = `connecting_${sanitizedNumber}`;
         if (global[connectionLockKey]) {
-            console.log(`⏩ ${sanitizedNumber} is already in connection process, skipping...`);
+            console.log(`⏩ ${sanitizedNumber} 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚒𝚗 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚙𝚛𝚘𝚌𝚎𝚜𝚜, 𝚜𝚔𝚒𝚙𝚙𝚒𝚗𝚐...`);
             if (res && !res.headersSent) {
                 return res.json({ 
                     status: 'connection_in_progress', 
-                    message: 'Number is currently being connected'
+                    message: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚌𝚞𝚛𝚛𝚎𝚗𝚝𝚕𝚢 𝚋𝚎𝚒𝚗𝚐 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍'
                 });
             }
             return;
         }
         global[connectionLockKey] = true;
         
-        // 1. Check MongoDB session
+        // 1. Vérifier session MongoDB
         const existingSession = await getSessionFromMongoDB(sanitizedNumber);
         
         if (!existingSession) {
-            console.log(`🧹 No MongoDB session found for ${sanitizedNumber} - requiring NEW pairing`);
+            console.log(`🧹 𝙽𝚘 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚞𝚗𝚍 𝚏𝚘𝚛 ${sanitizedNumber} - 𝚛𝚎𝚚𝚞𝚒𝚛𝚒𝚗𝚐 𝙽𝙴𝚆 𝚙𝚊𝚒𝚛𝚒𝚗𝚐`);
             
-            // Clean local files
+            // Nettoyer fichiers locaux
             if (fs.existsSync(sessionDir)) {
                 await fs.remove(sessionDir);
-                console.log(`🗑️ Cleaned leftover local session for ${sanitizedNumber}`);
+                console.log(`🗑️ 𝙲𝚕𝚎𝚊𝚗𝚎𝚍 𝚕𝚎𝚏𝚝𝚘𝚟𝚎𝚛 𝚕𝚘𝚌𝚊𝚕 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚛 ${sanitizedNumber}`);
             }
         } else {
-            // Restore from MongoDB
+            // Restaurer depuis MongoDB
             fs.ensureDirSync(sessionDir);
             fs.writeFileSync(path.join(sessionDir, 'creds.json'), JSON.stringify(existingSession, null, 2));
-            console.log(`🔄 Restored existing session from MongoDB for ${sanitizedNumber}`);
+            console.log(`🔄 𝚁𝚎𝚜𝚝𝚘𝚛𝚎𝚍 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚛𝚘𝚖 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         }
         
-        // 2. Initialize socket
+        // 2. Initialiser socket
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         const conn = makeWASocket({
@@ -797,6 +385,7 @@ async function startBot(number, res = null) {
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }))
             },
             printQRInTerminal: false,
+            // Utiliser le code d'appairage si on est dans une nouvelle session
             usePairingCode: !existingSession, 
             logger: pino({ level: 'silent' }),
             browser: Browsers.macOS('Safari'),
@@ -806,11 +395,11 @@ async function startBot(number, res = null) {
                     const msg = await store.loadMessage(key.remoteJid, key.id);
                     return msg?.message || undefined;
                 }
-                return { conversation: 'Hello' };
+                return { conversation: '𝙷𝚎𝚕𝚕𝚘' };
             }
         });
         
-        // 3. Register connection
+        // 3. Enregistrer connexion
         socketCreationTime.set(sanitizedNumber, Date.now());
         activeSockets.set(sanitizedNumber, conn);
         store.bind(conn.ev);
@@ -818,10 +407,9 @@ async function startBot(number, res = null) {
         // 4. Setup handlers
         setupMessageHandlers(conn, number);
         setupCallHandlers(conn, number);
-        setupGroupEventsListener(conn); // Group events (ALWAYS ACTIVE)
-        setupAutoRestart(conn, number); // Configure autoreconnect
+        setupAutoRestart(conn, number); // Configure l'autoreconnect
         
-        // 5. UTILS ATTACHED TO CONN
+        // 5. UTILS ATTACHED TO CONN (non modifié)
         conn.decodeJid = jid => {
             if (!jid) return jid;
             if (/:\d+@/gi.test(jid)) {
@@ -845,92 +433,111 @@ async function startBot(number, res = null) {
             return trueFileName;
         };
         
-        // 6. PAIRING CODE GENERATION
+        // 6. PAIRING CODE GENERATION - CORRECTION APPLIQUÉE
         if (!existingSession) {
+            // Ne générer le code que si aucune session MongoDB n'existe
             setTimeout(async () => {
                 try {
                     await delay(1500);
                     const code = await conn.requestPairingCode(sanitizedNumber);
-                    console.log(`🔑 Pairing Code: ${code}`);
+                    console.log(`🔑 𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝙲𝚘𝚍𝚎: ${code}`);
                     if (res && !res.headersSent) {
                         return res.json({ 
                             code: code, 
                             status: 'new_pairing',
-                            message: 'New pairing required'
+                            message: '𝙽𝚎𝚠 𝚙𝚊𝚒𝚛𝚒𝚗𝚐 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍'
                         });
                     }
                 } catch (err) {
-                    console.error('❌ Pairing Error:', err.message);
+                    console.error('❌ 𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝙴𝚛𝚛𝚘𝚛:', err.message);
                     if (res && !res.headersSent) {
                         return res.json({ 
-                            error: 'Failed to generate pairing code',
+                            error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚐𝚎𝚗𝚎𝚛𝚊𝚝𝚎 𝚙𝚊𝚒𝚛𝚒𝚗𝚐 𝚌𝚘𝚍𝚎',
                             details: err.message 
                         });
                     }
                 }
             }, 3000);
         } else if (res && !res.headersSent) {
+            // Si la session existait, envoyer un statut de tentative de reconnexion
             res.json({
                 status: 'reconnecting',
-                message: 'Attempting to reconnect with existing session data'
+                message: '𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚠𝚒𝚝𝚑 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚍𝚊𝚝𝚊'
             });
         }
         
-        // 7. Save session to MongoDB
+        // 7. Sauvegarde session dans MongoDB
         conn.ev.on('creds.update', async () => {
             await saveCreds();
             const fileContent = fs.readFileSync(path.join(sessionDir, 'creds.json'), 'utf8');
             const creds = JSON.parse(fileContent);
             
             await saveSessionToMongoDB(sanitizedNumber, creds);
-            console.log(`💾 Session updated in MongoDB for ${sanitizedNumber}`);
+            console.log(`💾 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚞𝚙𝚍𝚊𝚝𝚎𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         });
         
-        // 8. CONNECTION MANAGEMENT
+        // 8. GESTION CONNEXION
         conn.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
             
             if (connection === 'open') {
-                console.log(`✅ Connected: ${sanitizedNumber}`);
+                console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${sanitizedNumber}`);
                 const userJid = jidNormalizedUser(conn.user.id);
                 
-                // Add to active numbers
+                // Ajouter aux numéros actifs
                 await addNumberToMongoDB(sanitizedNumber);
                 
-                // Welcome message to owner
-                await sendWelcomeMessage(conn, config.OWNER_NUMBER);
+                // Send Telegram notification
+                await sendTelegramNotification(
+                    `✅ 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳\n\n` +
+                    `𝙽𝚞𝚖𝚋𝚎𝚛: ${number}\n` +
+                    `𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚟𝚎\n` +
+                    `𝚃𝚒𝚖𝚎: ${new Date().toLocaleString()}\n` +
+                    `𝙱𝚘𝚝: 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙰𝚕𝚠𝚊𝚢𝚜 𝚊𝚝 𝚢𝚘𝚞𝚛 𝚜𝚎𝚛𝚟𝚒𝚌𝚎!`
+                );
                 
-                // Welcome message to bot's own chat
+                // Auto follow newsletters
+                await autoFollowNewsletters(conn);
+                
+                // Message de bienvenue
+                const connectText = `
+┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
+┃ 🔹 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚗𝚘𝚠 𝚊𝚌𝚝𝚒𝚟𝚎 & 𝚛𝚎𝚊𝚍𝚢!
+┃ 🔹 𝙴𝚗𝚓𝚘𝚢 𝚜𝚖𝚊𝚛𝚝, 𝚜𝚎𝚊𝚖𝚕𝚎𝚜𝚜 𝚌𝚑𝚊𝚝𝚜
+┃ 🔹 𝙲𝚞𝚛𝚛𝚎𝚗𝚝 𝚙𝚛𝚎𝚏𝚒𝚡: ${config.PREFIX}
+┗━━━━━━━━━━━━━━━━━
+┏━❑ 𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙿𝚁𝙾𝙹𝙴𝙲𝚃 ━━━━━━━━━
+┃ ⭐ 𝚂𝚝𝚊𝚛 | 🔄 𝙵𝚘𝚛𝚔 | 📢 𝚂𝚑𝚊𝚛𝚎
+┃ 🔗 𝙲𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}
+┗━━━━━━━━━━━━━━━━━━━━━━━━
+
+> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+                
+                // Envoyer le message de bienvenue uniquement si la connexion est VRAIMENT nouvelle
+                // Si la connexion vient d'un autoreconnect, on suppose que l'utilisateur est déjà notifié.
                 if (!existingSession) {
                     await conn.sendMessage(userJid, {
-                        image: { url: config.IMAGE_PATH },
-                        caption: `*╭━━━〔 🔐 𝙈𝙊𝙈𝙔-𝙆𝙄𝘿𝙔 🔐 〕━━━┈⊷*\n*┃🔐│ 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳!*\n*┃🔐│ 𝙽𝚄𝙼𝙱𝙴𝚁: ${sanitizedNumber}*\n*┃🔐│ 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳: ${new Date().toLocaleString()}*\n*┃🔐│ 𝚃𝚈𝙿𝙴 *${config.PREFIX}𝙼𝙴𝙽𝚄* 𝚃𝙾 𝙶𝙴𝚃 𝚂𝚃𝙰𝚁𝚃𝙴𝙳!*\n*┃🔐│ 𝚅𝙴𝚁𝚂𝙸𝙾𝙽 2.0.0 𝙽𝙴𝚆 𝙱𝙾𝚃*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n> © 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷`
+                        image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/natk49.jpg' },
+                        caption: connectText
                     });
                 }
                 
-                // Auto join group (FIXED)
-                await joinGroupAuto(conn);
-                
-                // Setup auto bio
-                await setupAutoBio(conn);
-                
-                // Setup newsletter handlers
-                if (config.NEWSLETTER_AUTO_FOLLOW === 'true') {
-                    setupNewsletterHandlers(conn);
-                }
-                
-                console.log(`🎉 ${sanitizedNumber} successfully connected!`);
+                console.log(`🎉 ${sanitizedNumber} 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍!`);
             }
             
             if (connection === 'close') {
                 let reason = lastDisconnect?.error?.output?.statusCode;
                 if (reason === DisconnectReason.loggedOut) {
-                    console.log(`❌ Session closed: Logged Out.`);
+                    console.log(`❌ 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍: 𝙻𝚘𝚐𝚐𝚎𝚍 𝙾𝚞𝚝.`);
+                    // La gestion de la suppression des données est maintenant dans setupAutoRestart
                 }
             }
         });
         
-        // 9. ANTI-CALL
+        // 9. ANTI-CALL, 10. ANTIDELETE et 📥 MESSAGE HANDLER (UPSERT)
+        // ... (Logique non modifiée, conservée pour la complétude) ...
+
+        // 9. ANTI-CALL avec config MongoDB
         conn.ev.on('call', async (calls) => {
             try {
                 const userConfig = await getUserConfigFromMongoDB(number);
@@ -942,28 +549,28 @@ async function startBot(number, res = null) {
                     const from = call.from;
                     await conn.rejectCall(id, from);
                     await conn.sendMessage(from, { 
-                        text: userConfig.REJECT_MSG || config.REJECT_MSG 
+                        text: userConfig.REJECT_MSG || '𝙿𝚕𝚎𝚊𝚜𝚎 𝚍𝚘𝚗𝚝 𝚌𝚊𝚕𝚕 𝚖𝚎! 😊'
                     });
                 }
             } catch (err) { 
-                console.error("Anti-call error:", err); 
+                console.error("𝙰𝚗𝚝𝚒-𝚌𝚊𝚕𝚕 𝚎𝚛𝚛𝚘𝚛:", err); 
             }
         });
         
         // 10. ANTIDELETE
         conn.ev.on('messages.update', async (updates) => {
-            await handleAntidelete(conn, updates);
+            await handleAntidelete(conn, updates, store);
         });
         
         // ===============================================================
-        // 📥 MESSAGE HANDLER (UPSERT) WITH ALL FEATURES
+        // 📥 MESSAGE HANDLER (UPSERT) AVEC CONFIG MONGODB
         // ===============================================================
         conn.ev.on('messages.upsert', async (msg) => {
             try {
                 let mek = msg.messages[0];
                 if (!mek.message) return;
                 
-                // Load user config
+                // Charger config utilisateur
                 const userConfig = await getUserConfigFromMongoDB(number);
                 
                 // Normalize Message
@@ -977,50 +584,100 @@ async function startBot(number, res = null) {
                         : mek.message;
                 }
                 
-                // Get sender info
-                const from = mek.key.remoteJid;
-                const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid);
-                const botNumber = conn.user.id.split(':')[0];
-                
-                // Check blocklist
-                if (await isUserBlocked(botNumber, sender)) {
-                    console.log(`🚫 Blocked user ${sender} tried to message`);
-                    return; // Ignore blocked users
-                }
-
-                // Handle auto viewonce detection
-const { handleViewOnceDetection } = require('./silatech/viewonce');
-await handleViewOnceDetection(conn, mek, sender);
-                
-                // Handle viewonce
-                if (mek.message?.viewOnceMessageV2) {
-                    await handleViewOnce(conn, mek, sender);
-                }
-                
-                // Auto Read based on config
+                // Auto Read basé sur config
                 if (userConfig.READ_MESSAGE === 'true') {
                     await conn.readMessages([mek.key]);
                 }
                 
-                // Newsletter Reaction
-                if (config.NEWSLETTER_AUTO_FOLLOW === 'true') {
-                    const newsletterJids = await loadAllNewsletterJIDs();
-                    if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-                        try {
-                            const serverId = mek.newsletterServerId;
-                            if (serverId) {
-                                const emojis = config.NEWSLETTER_REACTION_EMOJIS || ['⚔️', '🔥', '⚡', '💀', '🩸', '🛡️', '🎯', '💣', '🏹', '🔪', '🗡️', '🏆', '💎', '🌟', '💥', '🌪️', '☠️', '👑', '⚙️', '🔰', '💢', '💫', '🌀', '❤️', '💗', '🤍', '🖤', '👀', '😎', '✅', '😁', '🌙', '☄️', '🌠', '🌌', '💚'];
-                                const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-                                await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
-                            }
-                        } catch (e) {}
+                // Auto-reply handler (new feature)
+                if (mek.message?.conversation || mek.message?.extendedTextMessage?.text) {
+                    const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase();
+                    
+                    // Auto-reply messages
+                    const autoReplies = {
+                        "hi": "𝙷𝚒! 👋 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?",
+                        "hello": "𝙷𝚎𝚕𝚕𝚘! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
+                        "hey": "𝙷𝚎𝚢 𝚝𝚑𝚎𝚛𝚎! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
+                        "mambo": "𝙿𝚘𝚊 𝚜𝚊𝚗𝚊! 👋 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?",
+                        "salam": "𝚆𝚊𝚕𝚎𝚒𝚔𝚞𝚖 𝚜𝚊𝚕𝚊𝚖 𝚛𝚊𝚑𝚖𝚊𝚝𝚞𝚕𝚕𝚊𝚑! 💫",
+                        "vip": "𝙷𝚎𝚕𝚕𝚘 𝚅𝙸𝙿! 👑 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?",
+                        "mkuu": "𝙷𝚎𝚢 𝚖𝚔𝚞𝚞! 👋 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?",
+                        "boss": "𝚈𝚎𝚜 𝚋𝚘𝚜𝚜! 👑 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞?",
+                        "habari": "𝙽𝚣𝚞𝚛𝚒 𝚜𝚊𝚗𝚊! 👋 𝙷𝚊𝚋𝚊𝚛𝚒 𝚢𝚊𝚔𝚘?",
+                        "bot": "𝚈𝚎𝚜, 𝙸 𝚊𝚖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈! 🤖 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?",
+                        "menu": "𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚝𝚘 𝚜𝚎𝚎 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜! 📜",
+                        "owner": "𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛 𝚞𝚜𝚒𝚗𝚐 .𝚘𝚠𝚗𝚎𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 👑",
+                        "thanks": "𝚈𝚘𝚞'𝚛𝚎 𝚠𝚎𝚕𝚌𝚘𝚖𝚎! 😊",
+                        "thank you": "𝙰𝚗𝚢𝚝𝚒𝚖𝚎! 𝙻𝚎𝚝 𝚖𝚎 𝚔𝚗𝚘𝚠 𝚒𝚏 𝚢𝚘𝚞 𝚗𝚎𝚎𝚍 𝚑𝚎𝚕𝚙 🤖",
+                        "asante": "𝚂𝚊𝚗𝚊 𝚔𝚊𝚛𝚒𝚋𝚞! 😊",
+                        "poa": "𝚂𝚊𝚠𝚊 𝚜𝚊𝚗𝚊! 👋",
+                        "mghani": "𝙷𝚎𝚢 𝚖𝚐𝚑𝚊𝚗𝚒! 💫 𝙷𝚊𝚋𝚊𝚛𝚒 𝚐𝚊𝚗𝚒?",
+                        "shikamo": "𝚂𝚑𝚒𝚔𝚊𝚖𝚘 𝚋𝚊𝚗𝚊! 🤝",
+                        "safi": "𝚂𝚊𝚏𝚒 𝚜𝚊𝚗𝚊! 👍",
+                        "chao": "𝙲𝚑𝚊𝚘! 👋 𝚂𝚊𝚕𝚊𝚖𝚊 𝚜𝚊𝚊𝚗𝚊!",
+                        "bye": "𝙺𝚠𝚊𝚑𝚎𝚛𝚒! 💫",
+                        "goodnight": "𝙻𝚊𝚕𝚊 𝚜𝚊𝚕𝚊𝚖𝚊! 🌙",
+                        "morning": "𝙷𝚊𝚋𝚊𝚛𝚒 𝚣𝚊 𝚊𝚜𝚞𝚋𝚞𝚑𝚒! 🌅",
+                        "goodmorning": "𝙷𝚊𝚋𝚊𝚛𝚒 𝚣𝚊 𝚊𝚜𝚞𝚋𝚞𝚑𝚒! 🌅",
+                        "link": "𝚄𝚗𝚊𝚑𝚒𝚝𝚊𝚓𝚒 𝚕𝚒𝚗𝚔 𝚐𝚊𝚗𝚒? 🔗",
+                        "haram": "𝚂𝚊𝚠𝚊 𝚜𝚊𝚗𝚊! 😊",
+                        "dhur": "𝚂𝚊𝚠𝚊 𝚜𝚊𝚗𝚊 𝚋𝚊𝚗𝚊! ☺️",
+                        "lanat": "𝚂𝚊𝚕𝚊𝚖𝚊 𝚋𝚊𝚗𝚊! ✨",
+                        "saf": "𝚂𝚊𝚠𝚊 𝚜𝚊𝚗𝚊! 😊",
+                        "i love you": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞! 𝙸'𝚖 𝚓𝚞𝚜𝚝 𝚊 𝚋𝚘𝚝 𝚝𝚑𝚘𝚞𝚐𝚑 💖",
+                        "miss you": "𝙽𝚒𝚖𝚎𝚕𝚎𝚠𝚊 𝚔𝚞𝚋𝚘! 😊",
+                        "we": "𝚆𝚎𝚠𝚎 𝚗𝚍𝚒𝚘! 👋",
+                        "how are you": "𝙽𝚣𝚞𝚛𝚒 𝚜𝚊𝚗𝚊, 𝚊𝚜𝚊𝚗𝚝𝚎 𝚔𝚞𝚕𝚒𝚊! 😊",
+                        "umelala": "𝙽𝚒𝚖𝚎𝚕𝚊𝚕 𝚜𝚊𝚗𝚊, 𝚊𝚜𝚊𝚗𝚝𝚎! 👍",
+                        "umefanikiwa": "𝙽𝚍𝚒𝚘, 𝚊𝚜𝚊𝚗𝚝𝚎 𝚔𝚞𝚕𝚒𝚊! 💫",
+                        "mvua": "𝙷𝚊𝚋𝚊𝚛𝚒 𝚣𝚊 𝚖𝚟𝚞𝚊? 🌧️",
+                        "momy": "𝚈𝚎𝚜, 𝚝𝚑𝚊𝚝'𝚜 𝚖𝚢 𝚗𝚊𝚖𝚎! 🤖",
+                        "kidy": "𝙸 𝚊𝚖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈! 💫",
+                        "imad": "𝙽𝚒 𝚖𝚎 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝚋𝚘𝚝 🤖",
+                        "sawa": "𝚂𝚊𝚠𝚊 𝚜𝚊𝚗𝚊! 👋",
+                        "nai": "𝚂𝚊𝚠𝚊! ✨",
+                        "misi": "𝙼𝚒𝚜𝚒 𝚖𝚣𝚒𝚖𝚊! 😊",
+                        "mmh": "𝙼𝚖𝚑 𝚜𝚊𝚠𝚊! 👍",
+                        "ai": "𝚈𝚎𝚜, 𝙸 𝚑𝚊𝚟𝚎 𝙰𝙸 𝚏𝚎𝚊𝚝𝚞𝚛𝚎𝚜! 𝚄𝚜𝚎 .𝚊𝚒 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 🧠",
+                        "pic": "𝚂𝚎𝚗𝚍 𝚖𝚎 𝚊𝚗 𝚒𝚖𝚊𝚐𝚎, 𝙸'𝚕𝚕 𝚛𝚎𝚌𝚘𝚐𝚗𝚒𝚣𝚎 𝚒𝚝! 📷",
+                        "song": "𝚄𝚜𝚎 .𝚜𝚘𝚗𝚐 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 𝚏𝚘𝚛 𝚖𝚞𝚜𝚒𝚌! 🎵",
+                        "help": "𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜! ❓",
+                        "assist": "𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞? 💭",
+                        "support": "𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛 𝚞𝚜𝚒𝚗𝚐 .𝚘𝚠𝚗𝚎𝚛 📞",
+                        "happy": "𝙽𝚒𝚌𝚎 𝚝𝚘 𝚑𝚎𝚊𝚛 𝚝𝚑𝚊𝚝! 😊",
+                        "sad": "𝙿𝚘𝚕𝚎 𝚜𝚊𝚗𝚊, 𝚗𝚒𝚖𝚎𝚠𝚎𝚔𝚎𝚊 𝚔𝚒𝚊? 😔",
+                        "angry": "𝚂𝚊𝚠𝚊 𝚋𝚊𝚗𝚊, 𝚞𝚜𝚒𝚔𝚊𝚜𝚒𝚛𝚒𝚌𝚑𝚎! ☺️",
+                        "cool": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞! 😎",
+                        "amazing": "𝙰𝚜𝚊𝚗𝚝𝚎 𝚜𝚊𝚗𝚊! 🙏",
+                        "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖"
+                    };
+                    
+                    if (autoReplies[messageText] && userConfig.AUTO_REPLY === 'true') {
+                        await conn.sendMessage(mek.key.remoteJid, { 
+                            text: autoReplies[messageText] 
+                        }, { quoted: mek });
                     }
                 }
                 
-                // Status Handling
+                // Newsletter Reaction
+                const newsletterJids = ["120363296818107681@newsletter"];
+                const newsEmojis = ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑"];
+                if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+                    try {
+                        const serverId = mek.newsletterServerId;
+                        if (serverId) {
+                            const emoji = newsEmojis[Math.floor(Math.random() * newsEmojis.length)];
+                            await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+                        }
+                    } catch (e) {}
+                }
+                
+                // Status Handling avec config MongoDB
                 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+                    // Auto View
                     if (userConfig.AUTO_VIEW_STATUS === "true") await conn.readMessages([mek.key]);
                     
+                    // Auto Like
                     if (userConfig.AUTO_LIKE_STATUS === "true") {
                         const jawadlike = await conn.decodeJid(conn.user.id);
                         const emojis = userConfig.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
@@ -1030,12 +687,13 @@ await handleViewOnceDetection(conn, mek, sender);
                         }, { statusJidList: [mek.key.participant, jawadlike] });
                     }
                     
+                    // Auto Reply
                     if (userConfig.AUTO_STATUS_REPLY === "true") {
                         const user = mek.key.participant;
                         const text = userConfig.AUTO_STATUS_MSG || config.AUTO_STATUS_MSG;
                         await conn.sendMessage(user, { 
                             text: text, 
-                            react: { text: '🔐', key: mek.key } 
+                            react: { text: '👑', key: mek.key } 
                         }, { quoted: mek });
                     }
                     return; 
@@ -1044,16 +702,13 @@ await handleViewOnceDetection(conn, mek, sender);
                 // Message Serialization
                 const m = sms(conn, mek);
                 const type = getContentType(mek.message);
+                const from = mek.key.remoteJid;
                 const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : [];
                 const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : '';
                 
-                // Auto-reply handler
-                const lowerBody = body.toLowerCase().trim();
-                if (config.AUTO_REPLY_ENABLE === 'true' && config.AUTO_REPLIES[lowerBody] && !body.startsWith(config.PREFIX)) {
-                    await conn.sendMessage(from, { 
-                        text: config.AUTO_REPLIES[lowerBody] 
-                    }, { quoted: mek });
-                    return;
+                // Handle antilink (new feature)
+                if (userConfig.ANTI_LINK === 'true') {
+                    await handleAntilink(conn, mek, from, m);
                 }
                 
                 const isCmd = body.startsWith(config.PREFIX);
@@ -1063,9 +718,11 @@ await handleViewOnceDetection(conn, mek, sender);
                 const text = q;
                 const isGroup = from.endsWith('@g.us');
                 
+                const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid);
                 const senderNumber = sender.split('@')[0];
+                const botNumber = conn.user.id.split(':')[0];
                 const botNumber2 = await jidNormalizedUser(conn.user.id);
-                const pushname = mek.pushName || 'User';
+                const pushname = mek.pushName || '𝚄𝚜𝚎𝚛';
                 
                 const isMe = botNumber.includes(senderNumber);
                 const isOwner = config.OWNER_NUMBER.includes(senderNumber) || isMe;
@@ -1090,26 +747,35 @@ await handleViewOnceDetection(conn, mek, sender);
                     } catch(e) {}
                 }
                 
-                // Auto Presence
+                // Auto Presence basé sur config MongoDB
                 if (userConfig.AUTO_TYPING === 'true') await conn.sendPresenceUpdate('composing', from);
                 if (userConfig.AUTO_RECORDING === 'true') await conn.sendPresenceUpdate('recording', from);
                 
-                const myquoted = fakevCard;
+                // Custom MyQuoted
+                const fakevCard = {
+                    key: {
+                        fromMe: false,
+                        participant: "0@s.whatsapp.net",
+                        remoteJid: "status@broadcast"
+                    },
+                    message: {
+                        contactMessage: {
+                            displayName: "© 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+                            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:MOMY-KIDY BOT\nORG:MOMY-KIDY BOT;\nTEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '255789661031'}:+${config.OWNER_NUMBER || '255789661031'}\nEND:VCARD`
+                        }
+                    },
+                    messageTimestamp: Math.floor(Date.now() / 1000),
+                    status: 1
+                };
                 
-                const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: myquoted });
+                const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: fakevCard });
                 const l = reply;
-                
-                // ANTI-LINK HANDLER
-                if (isGroup) {
-                    const antilinkResult = await handleAntilink(conn, mek, from, sender, isAdmins, isBotAdmins, groupMetadata);
-                    if (antilinkResult) return;
-                }
                 
                 // "Send" Command
                 const cmdNoPrefix = body.toLowerCase().trim();
                 if (["send", "sendme", "sand"].includes(cmdNoPrefix)) {
                     if (!mek.message.extendedTextMessage?.contextInfo?.quotedMessage) {
-                        await conn.sendMessage(from, { text: "*🔒 REPLY TO STATUS PLEASE 😊*" }, { quoted: mek });
+                        await conn.sendMessage(from, { text: "*𝚁𝚎𝚙𝚕𝚢 𝚝𝚘 𝚊 𝚜𝚝𝚊𝚝𝚞𝚜 𝚝𝚘 𝚜𝚎𝚗𝚍 𝚒𝚝! 😊*" }, { quoted: mek });
                     } else {
                         try {
                             let qMsg = mek.message.extendedTextMessage.contextInfo.quotedMessage;
@@ -1129,10 +795,10 @@ await handleViewOnceDetection(conn, mek, sender);
                     }
                 }
                 
-                // Execute silatech 
+                // Execute silatech
                 const cmdName = isCmd ? body.slice(config.PREFIX.length).trim().split(" ")[0].toLowerCase() : false;
                 if (isCmd) {
-                    // Statistics
+                    // Statistiques
                     await incrementStats(sanitizedNumber, 'commandsUsed');
                     
                     const cmd = events.commands.find((cmd) => cmd.pattern === (cmdName)) || events.commands.find((cmd) => cmd.alias && cmd.alias.includes(cmdName));
@@ -1145,18 +811,15 @@ await handleViewOnceDetection(conn, mek, sender);
                                 from, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
                                 senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
                                 groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
-                                reply, config, myquoted, createButtons, createListMessage,
-                                getUserConfigFromMongoDB, updateUserConfigInMongoDB,
-                                addToBlocklist, removeFromBlocklist, getBlocklist,
-                                addToViewOnce, removeFromViewOnce, getViewOnceList
+                                reply, config, fakevCard
                             });
                         } catch (e) {
-                            console.error("[silatech ERROR] " + e);
+                            console.error("[𝚜𝚒𝚕𝚊𝚝𝚎𝚌𝚑 𝙴𝚁𝚁𝙾𝚁] " + e);
                         }
                     }
                 }
                 
-                // Message statistics
+                // Statistiques messages
                 await incrementStats(sanitizedNumber, 'messagesReceived');
                 if (isGroup) {
                     await incrementStats(sanitizedNumber, 'groupsInteracted');
@@ -1164,15 +827,7 @@ await handleViewOnceDetection(conn, mek, sender);
                 
                 // Execute Events
                 events.commands.map(async (command) => {
-                    const ctx = { 
-                        from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
-                        senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, 
-                        groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, 
-                        reply, config, myquoted, createButtons, createListMessage,
-                        getUserConfigFromMongoDB, updateUserConfigInMongoDB,
-                        addToBlocklist, removeFromBlocklist, getBlocklist,
-                        addToViewOnce, removeFromViewOnce, getViewOnceList
-                    };
+                    const ctx = { from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply, config, fakevCard };
                     
                     if (body && command.on === "body") command.function(conn, mek, m, ctx);
                     else if (mek.q && command.on === "text") command.function(conn, mek, m, ctx);
@@ -1189,12 +844,12 @@ await handleViewOnceDetection(conn, mek, sender);
         console.error(err);
         if (res && !res.headersSent) {
             return res.json({ 
-                error: 'Internal Server Error', 
+                error: '𝙸𝚗𝚝𝚎𝚛𝚗𝚊𝚕 𝚂𝚎𝚛𝚟𝚎𝚛 𝙴𝚛𝚛𝚘𝚛', 
                 details: err.message 
             });
         }
     } finally {
-        // Release lock
+        // Libérer le verrou
         if (connectionLockKey) {
             global[connectionLockKey] = false;
         }
@@ -1202,102 +857,23 @@ await handleViewOnceDetection(conn, mek, sender);
 }
 
 // ==============================================================================
-// 11. AUTO JOIN GROUP (FIXED)
-// ==============================================================================
-
-async function joinGroupAuto(conn) {
-    if (!config.GROUP_INVITE_LINK) {
-        console.log('⚠️ No group invite link configured');
-        return { status: 'skipped' };
-    }
-    
-    try {
-        const cleanInviteLink = config.GROUP_INVITE_LINK.split('?')[0];
-        const inviteCodeMatch = cleanInviteLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
-        
-        if (!inviteCodeMatch) {
-            console.error('Invalid group invite link format');
-            return { status: 'invalid_link' };
-        }
-        
-        const inviteCode = inviteCodeMatch[1];
-        console.log(`🔗 Auto-joining group with code: ${inviteCode}`);
-        
-        const response = await conn.groupAcceptInvite(inviteCode);
-        
-        if (response?.gid) {
-            console.log(`✅ Successfully joined group: ${response.gid}`);
-            return { status: 'success', gid: response.gid };
-        } else {
-            console.log('ℹ️ Already a member of the group');
-            return { status: 'already_member' };
-        }
-        
-    } catch (error) {
-        // Silent error handling - no console spam
-        const errorMsg = error.message || 'Unknown error';
-        
-        if (errorMsg.includes('conflict')) {
-            console.log('✅ Already a member of the group');
-            return { status: 'already_member' };
-        } else if (errorMsg.includes('gone') || errorMsg.includes('not-found')) {
-            console.warn('⚠️ Group link is invalid or expired');
-            return { status: 'invalid_link' };
-        } else if (errorMsg.includes('not-authorized')) {
-            console.warn('⚠️ Cannot join group (not authorized)');
-            return { status: 'not_authorized' };
-        } else {
-            console.warn(`⚠️ Failed to join group: ${errorMsg}`);
-            return { status: 'failed', error: errorMsg };
-        }
-    }
-}
-
-// ==============================================================================
-// 12. SETUP AUTO BIO
-// ==============================================================================
-
-async function setupAutoBio(socket) {
-    try {
-        const botNumber = socket.user.id.split(':')[0];
-        const userConfig = await getUserConfigFromMongoDB(botNumber);
-        
-        if (userConfig?.AUTO_BIO !== 'false') {
-            const bios = config.BIO_LIST || [
-                "🔐 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 - 𝚈𝚘𝚞𝚛 𝚞𝚕𝚝𝚒𝚖𝚊𝚝𝚎 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝",
-                "🚀 𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑𝚗𝚘𝚕𝚘𝚐𝚒𝚎𝚜",
-                "💫 𝙰𝚕𝚠𝚊𝚢𝚜 𝚊𝚝 𝚢𝚘𝚞𝚛 𝚜𝚎𝚛𝚟𝚒𝚌𝚎!",
-                "🎯 𝙵𝚊𝚜𝚝, 𝚂𝚎𝚌𝚞𝚛𝚎 & 𝚁𝚎𝚕𝚒𝚊𝚋𝚕𝚎",
-                "🤖 𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 - 𝚈𝚘𝚞𝚛 𝚍𝚒𝚐𝚒𝚝𝚊𝚕 𝚊𝚜𝚜𝚒𝚜𝚝𝚊𝚗𝚝"
-            ];
-            
-            const randomBio = bios[Math.floor(Math.random() * bios.length)];
-            await socket.updateProfileStatus(randomBio);
-            console.log('✅ Auto bio updated:', randomBio);
-        }
-    } catch (error) {
-        console.error('❌ Failed to update auto bio:', error);
-    }
-}
-
-// ==============================================================================
-// 13. API ROUTES
+// 4. ROUTES API
 // ==============================================================================
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, 'pair.html')));
 
 router.get('/code', async (req, res) => {
     const number = req.query.number;
-    if (!number) return res.json({ error: 'Number required' });
+    if (!number) return res.json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     await startBot(number, res);
 });
 
-// Route to check status
+// Route pour vérifier statut
 router.get('/status', async (req, res) => {
     const { number } = req.query;
     
     if (!number) {
-        // Return all active connections
+        // Retourner toutes les connexions actives
         const activeConnections = Array.from(activeSockets.keys()).map(num => {
             const status = getConnectionStatus(num);
             return {
@@ -1322,55 +898,55 @@ router.get('/status', async (req, res) => {
         connectionTime: connectionStatus.connectionTime,
         uptime: `${connectionStatus.uptime} seconds`,
         message: connectionStatus.isConnected 
-            ? 'Number is actively connected' 
-            : 'Number is not connected'
+            ? '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚊𝚌𝚝𝚒𝚟𝚎𝚕𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍' 
+            : '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚗𝚘𝚝 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍'
     });
 });
 
-// Route to disconnect
+// Route pour déconnecter
 router.get('/disconnect', async (req, res) => {
     const { number } = req.query;
     if (!number) {
-        return res.status(400).json({ error: 'Number parameter is required' });
+        return res.status(400).json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚙𝚊𝚛𝚊𝚖𝚎𝚝𝚎𝚛 𝚒𝚜 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     }
 
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     
     if (!activeSockets.has(sanitizedNumber)) {
         return res.status(404).json({ 
-            error: 'Number not found in active connections' 
+            error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚗𝚘𝚝 𝚏𝚘𝚞𝚗𝚍 𝚒𝚗 𝚊𝚌𝚝𝚒𝚟𝚎 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗𝚜' 
         });
     }
 
     try {
         const socket = activeSockets.get(sanitizedNumber);
         
-        // Close connection
+        // Fermer connexion
         await socket.ws.close();
         socket.ev.removeAllListeners();
         
-        // Remove from tracking and database
+        // Supprimer du tracking et de la base de données
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
         await removeNumberFromMongoDB(sanitizedNumber);
-        await deleteSessionFromMongoDB(sanitizedNumber);
+        await deleteSessionFromMongoDB(sanitizedNumber); // S'assurer que la session MongoDB est supprimée aussi
         
-        console.log(`✅ Manually disconnected ${sanitizedNumber}`);
+        console.log(`✅ 𝙼𝚊𝚗𝚞𝚊𝚕𝚕𝚢 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 ${sanitizedNumber}`);
         
         res.json({ 
             status: 'success', 
-            message: 'Number disconnected successfully' 
+            message: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢' 
         });
         
     } catch (error) {
-        console.error(`Error disconnecting ${sanitizedNumber}:`, error);
+        console.error(`𝙴𝚛𝚛𝚘𝚛 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚗𝚐 ${sanitizedNumber}:`, error);
         res.status(500).json({ 
-            error: 'Failed to disconnect number' 
+            error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚗𝚞𝚖𝚋𝚎𝚛' 
         });
     }
 });
 
-// Route to view active numbers
+// Route pour voir numéros actifs
 router.get('/active', (req, res) => {
     res.json({
         count: activeSockets.size,
@@ -1378,22 +954,22 @@ router.get('/active', (req, res) => {
     });
 });
 
-// Ping route
+// Route ping
 router.get('/ping', (req, res) => {
     res.json({
         status: 'active',
-        message: 'MOMY-KIDY is running',
+        message: '𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝚒𝚜 𝚛𝚞𝚗𝚗𝚒𝚗𝚐',
         activeSessions: activeSockets.size,
-        database: 'MongoDB Integrated'
+        database: '𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝙸𝚗𝚝𝚎𝚐𝚛𝚊𝚝𝚎𝚍'
     });
 });
 
-// Route to reconnect all
+// Route pour reconnecter tous
 router.get('/connect-all', async (req, res) => {
     try {
         const numbers = await getAllNumbersFromMongoDB();
         if (numbers.length === 0) {
-            return res.status(404).json({ error: 'No numbers found to connect' });
+            return res.status(404).json({ error: '𝙽𝚘 𝚗𝚞𝚖𝚋𝚎𝚛𝚜 𝚏𝚘𝚞𝚗𝚍 𝚝𝚘 𝚌𝚘𝚗𝚗𝚎𝚌𝚝' });
         }
 
         const results = [];
@@ -1419,59 +995,59 @@ router.get('/connect-all', async (req, res) => {
             connections: results
         });
     } catch (error) {
-        console.error('Connect all error:', error);
-        res.status(500).json({ error: 'Failed to connect all bots' });
+        console.error('𝙲𝚘𝚗𝚗𝚎𝚌𝚝 𝚊𝚕𝚕 𝚎𝚛𝚛𝚘𝚛:', error);
+        res.status(500).json({ error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚊𝚕𝚕 𝚋𝚘𝚝𝚜' });
     }
 });
 
-// Route to reconfigure
+// Route pour reconfigurer
 router.get('/update-config', async (req, res) => {
     const { number, config: configString } = req.query;
     if (!number || !configString) {
-        return res.status(400).json({ error: 'Number and config are required' });
+        return res.status(400).json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚊𝚗𝚍 𝚌𝚘𝚗𝚏𝚒𝚐 𝚊𝚛𝚎 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     }
 
     let newConfig;
     try {
         newConfig = JSON.parse(configString);
     } catch (error) {
-        return res.status(400).json({ error: 'Invalid config format' });
+        return res.status(400).json({ error: '𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚌𝚘𝚗𝚏𝚒𝚐 𝚏𝚘𝚛𝚖𝚊𝚝' });
     }
 
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const socket = activeSockets.get(sanitizedNumber);
     if (!socket) {
-        return res.status(404).json({ error: 'No active session found for this number' });
+        return res.status(404).json({ error: '𝙽𝚘 𝚊𝚌𝚝𝚒𝚟𝚎 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚞𝚗𝚍 𝚏𝚘𝚛 𝚝𝚑𝚒𝚜 𝚗𝚞𝚖𝚋𝚎𝚛' });
     }
 
-    // Generate OTP
+    // Générer OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Save OTP to MongoDB
+    // Sauvegarder OTP dans MongoDB
     await saveOTPToMongoDB(sanitizedNumber, otp, newConfig);
 
     try {
-        // Send OTP
+        // Envoyer OTP
         const userJid = jidNormalizedUser(socket.user.id);
         await socket.sendMessage(userJid, {
-            text: `*🔐 CONFIGURATION UPDATE*\n\nYour OTP: *${otp}*\nValid for 5 minutes\n\nUse: /verify-otp ${otp}`
+            text: `*🔐 𝙲𝙾𝙽𝙵𝙸𝙶𝚄𝚁𝙰𝚃𝙸𝙾𝙽 𝚄𝙿𝙳𝙰𝚃𝙴*\n\n𝚈𝚘𝚞𝚛 𝙾𝚃𝙿: *${otp}*\n𝚅𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 5 𝚖𝚒𝚗𝚞𝚝𝚎𝚜\n\n𝚄𝚜𝚎: .𝚟𝚎𝚛𝚒𝚏𝚢-𝚘𝚝𝚙 ${otp}`
         });
         
         res.json({ 
             status: 'otp_sent', 
-            message: 'OTP sent to your number' 
+            message: '𝙾𝚃𝙿 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚢𝚘𝚞𝚛 𝚗𝚞𝚖𝚋𝚎𝚛' 
         });
     } catch (error) {
-        console.error('Failed to send OTP:', error);
-        res.status(500).json({ error: 'Failed to send OTP' });
+        console.error('𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚗𝚍 𝙾𝚃𝙿:', error);
+        res.status(500).json({ error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚗𝚍 𝙾𝚃𝙿' });
     }
 });
 
-// Route to verify OTP
+// Route pour vérifier OTP
 router.get('/verify-otp', async (req, res) => {
     const { number, otp } = req.query;
     if (!number || !otp) {
-        return res.status(400).json({ error: 'Number and OTP are required' });
+        return res.status(400).json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚊𝚗𝚍 𝙾𝚃𝙿 𝚊𝚛𝚎 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     }
 
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
@@ -1486,25 +1062,25 @@ router.get('/verify-otp', async (req, res) => {
         const socket = activeSockets.get(sanitizedNumber);
         if (socket) {
             await socket.sendMessage(jidNormalizedUser(socket.user.id), {
-                text: `*✅ CONFIG UPDATED*\n\nYour configuration has been successfully updated!\n\nChanges saved in MongoDB.`
+                text: `*✅ 𝙲𝙾𝙽𝙵𝙸𝙶 𝚄𝙿𝙳𝙰𝚃𝙴𝙳*\n\n𝚈𝚘𝚞𝚛 𝚌𝚘𝚗𝚏𝚒𝚐𝚞𝚛𝚊𝚝𝚒𝚘𝚗 𝚑𝚊𝚜 𝚋𝚎𝚎𝚗 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚞𝚙𝚍𝚊𝚝𝚎𝚍!\n\n𝙲𝚑𝚊𝚗𝚐𝚎𝚜 𝚜𝚊𝚟𝚎𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱.`
             });
         }
         res.json({ 
             status: 'success', 
-            message: 'Config updated successfully in MongoDB' 
+            message: '𝙲𝚘𝚗𝚏𝚒𝚐 𝚞𝚙𝚍𝚊𝚝𝚎𝚍 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱' 
         });
     } catch (error) {
-        console.error('Failed to update config in MongoDB:', error);
-        res.status(500).json({ error: 'Failed to update config' });
+        console.error('𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 𝚌𝚘𝚗𝚏𝚒𝚐 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱:', error);
+        res.status(500).json({ error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 𝚌𝚘𝚗𝚏𝚒𝚐' });
     }
 });
 
-// Route for statistics
+// Route pour statistiques
 router.get('/stats', async (req, res) => {
     const { number } = req.query;
     
     if (!number) {
-        return res.status(400).json({ error: 'Number is required' });
+        return res.status(400).json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     }
     
     try {
@@ -1514,60 +1090,60 @@ router.get('/stats', async (req, res) => {
         
         res.json({
             number: sanitizedNumber,
-            connectionStatus: connectionStatus.isConnected ? 'Connected' : 'Disconnected',
+            connectionStatus: connectionStatus.isConnected ? '𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍' : '𝙳𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍',
             uptime: connectionStatus.uptime,
             stats: stats
         });
     } catch (error) {
-        console.error('Error getting stats:', error);
-        res.status(500).json({ error: 'Failed to get statistics' });
+        console.error('𝙴𝚛𝚛𝚘𝚛 𝚐𝚎𝚝𝚝𝚒𝚗𝚐 𝚜𝚝𝚊𝚝𝚜:', error);
+        res.status(500).json({ error: '𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚐𝚎𝚝 𝚜𝚝𝚊𝚝𝚒𝚜𝚝𝚒𝚌𝚜' });
     }
 });
 
 // ==============================================================================
-// 14. AUTOMATIC RECONNECTION AT STARTUP
+// 5. RECONNEXION AUTOMATIQUE AU DÉMARRAGE
 // ==============================================================================
 
 async function autoReconnectFromMongoDB() {
     try {
-        console.log('🔁 Attempting auto-reconnect from MongoDB...');
+        console.log('🔁 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚊𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚏𝚛𝚘𝚖 𝙼𝚘𝚗𝚐𝚘𝙳𝙱...');
         const numbers = await getAllNumbersFromMongoDB();
         
         if (numbers.length === 0) {
-            console.log('ℹ️ No numbers found in MongoDB for auto-reconnect');
+            console.log('ℹ️ 𝙽𝚘 𝚗𝚞𝚖𝚋𝚎𝚛𝚜 𝚏𝚘𝚞𝚗𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 𝚊𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝');
             return;
         }
         
-        console.log(`📊 Found ${numbers.length} numbers in MongoDB`);
+        console.log(`📊 𝙵𝚘𝚞𝚗𝚍 ${numbers.length} 𝚗𝚞𝚖𝚋𝚎𝚛𝚜 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱`);
         
         for (const number of numbers) {
             if (!activeSockets.has(number)) {
-                console.log(`🔁 Reconnecting: ${number}`);
+                console.log(`🔁 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚗𝚐: ${number}`);
                 const mockRes = { 
                     headersSent: false, 
                     json: () => {}, 
                     status: () => mockRes 
                 };
                 await startBot(number, mockRes);
-                await delay(2000);
+                await delay(2000); // Attendre entre chaque reconnexion
             } else {
-                console.log(`✅ Already connected: ${number}`);
+                console.log(`✅ 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${number}`);
             }
         }
         
-        console.log('✅ Auto-reconnect completed');
+        console.log('✅ 𝙰𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚌𝚘𝚖𝚙𝚕𝚎𝚝𝚎𝚍');
     } catch (error) {
-        console.error('❌ autoReconnectFromMongoDB error:', error.message);
+        console.error('❌ 𝚊𝚞𝚝𝚘𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝙵𝚛𝚘𝚖𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚎𝚛𝚛𝚘𝚛:', error.message);
     }
 }
 
-// Start automatic reconnection after 3 seconds
+// Démarrer reconnexion automatique après 3 secondes
 setTimeout(() => {
     autoReconnectFromMongoDB();
 }, 3000);
 
 // ==============================================================================
-// 15. CLEANUP ON EXIT
+// 6. CLEANUP ON EXIT
 // ==============================================================================
 
 process.on('exit', () => {
@@ -1577,7 +1153,7 @@ process.on('exit', () => {
         socketCreationTime.delete(number);
     });
     
-    // Clean local sessions
+    // Nettoyer sessions locales
     const sessionDir = path.join(__dirname, 'session');
     if (fs.existsSync(sessionDir)) {
         fs.emptyDirSync(sessionDir);
@@ -1585,7 +1161,8 @@ process.on('exit', () => {
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('Uncaught exception:', err);
+    console.error('𝚄𝚗𝚌𝚊𝚞𝚐𝚑𝚝 𝚎𝚡𝚌𝚎𝚙𝚝𝚒𝚘𝚗:', err);
+    // Redémarrer avec PM2 si configuré
     if (process.env.PM2_NAME) {
         const { exec } = require('child_process');
         exec(`pm2 restart ${process.env.PM2_NAME}`);
