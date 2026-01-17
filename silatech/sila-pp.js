@@ -1,4 +1,4 @@
-const { cmd } = require('../inconnuboy')
+const { cmd } = require('../momy')
 const fs = require('fs')
 const path = require('path')
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys')
