@@ -78,42 +78,134 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Auto follow newsletter function
+// Auto follow newsletters function - UPDATED
 async function autoFollowNewsletters(conn) {
     try {
-        const newsletterURL = 'https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json';
-        const response = await axios.get(newsletterURL);
-        const newsletters = response.data;
+        console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂 𝙰𝙽𝙳 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
         
-        console.log(`📰 𝙵𝚘𝚞𝚗𝚍 ${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠`);
-        
-        for (const newsletter of newsletters) {
-            try {
-                await conn.readMessages([{
-                    remoteJid: newsletter.jid,
-                    id: createSerial(16)
-                }]);
-                console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
-                await delay(500); // Delay to avoid rate limiting
-            } catch (error) {
-                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
-            }
-        }
-        
-        // Also follow the specific jid you provided
-        const specificJid = "120363402325089913@newsletter";
+        // ============================================================
+        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG
+        // ============================================================
+        const specificChannelJid = config.CHANNEL_JID_1 || "120363402325089913@newsletter";
         try {
             await conn.readMessages([{
-                remoteJid: specificJid,
+                remoteJid: specificChannelJid,
                 id: createSerial(16)
             }]);
-            console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚓𝚒𝚍: ${specificJid}`);
+            console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
         } catch (error) {
-            console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚓𝚒𝚍: ${error.message}`);
+            console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
         }
+
+        // ============================================================
+        // 2. FOLLOW FROM GITHUB NEWSLETTER LIST
+        // ============================================================
+        try {
+            const newsletterURL = 'https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json';
+            const response = await axios.get(newsletterURL);
+            const newsletters = response.data;
+
+            console.log(`📰 𝙵𝚘𝚞𝚗𝚍 ${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚏𝚛𝚘𝚖 𝙶𝚒𝚝𝙷𝚞𝚋 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠`);
+
+            for (const newsletter of newsletters) {
+                try {
+                    await conn.readMessages([{
+                        remoteJid: newsletter.jid,
+                        id: createSerial(16)
+                    }]);
+                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
+                    await delay(500); // Delay to avoid rate limiting
+                } catch (error) {
+                    console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
+        }
+
+        // ============================================================
+        // 3. AUTO-JOIN GROUPS FROM CONFIG
+        // ============================================================
+        console.log('👥 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙶𝚁𝙾𝚄𝙿𝚂...');
         
+        // Auto-join Group 1
+        if (config.GROUP_LINK_1) {
+            try {
+                const groupInviteCode = config.GROUP_LINK_1.split('/').pop();
+                if (groupInviteCode) {
+                    await conn.groupAcceptInvite(groupInviteCode);
+                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙 1: ${config.GROUP_LINK_1}`);
+                }
+            } catch (error) {
+                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 1: ${error.message}`);
+            }
+        }
+
+        // Auto-join Group 2
+        if (config.GROUP_LINK_2) {
+            try {
+                const groupInviteCode = config.GROUP_LINK_2.split('/').pop();
+                if (groupInviteCode) {
+                    await conn.groupAcceptInvite(groupInviteCode);
+                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙 2: ${config.GROUP_LINK_2}`);
+                }
+            } catch (error) {
+                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 2: ${error.message}`);
+            }
+        }
+
+        // ============================================================
+        // 4. FOLLOW ADDITIONAL CHANNELS FROM CONFIG
+        // ============================================================
+        // Follow second channel if exists
+        if (config.CHANNEL_JID_2) {
+            try {
+                await conn.readMessages([{
+                    remoteJid: config.CHANNEL_JID_2,
+                    id: createSerial(16)
+                }]);
+                console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_JID_2}`);
+            } catch (error) {
+                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
+            }
+        }
+
+        console.log('🎉 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙰𝙽𝙳 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙲𝙾𝙼𝙿𝙻𝙴𝚃𝙴𝙳!');
+
     } catch (error) {
-        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
+        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠 𝚏𝚞𝚗𝚌𝚝𝚒𝚘𝚗:', error.message);
+    }
+}
+
+// Auto update bio function
+async function autoUpdateBio(conn) {
+    try {
+        if (config.AUTO_BIO === 'true' && config.BIO_LIST && config.BIO_LIST.length > 0) {
+            const bioList = config.BIO_LIST;
+            let currentIndex = 0;
+            
+            // Function to update bio
+            const updateBio = async () => {
+                try {
+                    const bioText = bioList[currentIndex];
+                    await conn.updateProfileStatus(bioText);
+                    console.log(`📝 𝚄𝚙𝚍𝚊𝚝𝚎𝚍 𝚋𝚒𝚘: ${bioText}`);
+                    
+                    // Move to next bio
+                    currentIndex = (currentIndex + 1) % bioList.length;
+                } catch (error) {
+                    console.error(`❌ 𝙴𝚛𝚛𝚘𝚛 𝚞𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚋𝚒𝚘:`, error);
+                }
+            };
+            
+            // Update immediately
+            await updateBio();
+            
+            // Update every 30 minutes
+            setInterval(updateBio, 30 * 60 * 1000);
+        }
+    } catch (error) {
+        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚋𝚒𝚘 𝚏𝚞𝚗𝚌𝚝𝚒𝚘𝚗:', error);
     }
 }
 
@@ -127,7 +219,7 @@ function getConnectionStatus(number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const isConnected = activeSockets.has(sanitizedNumber);
     const connectionTime = socketCreationTime.get(sanitizedNumber);
-    
+
     return {
         isConnected,
         connectionTime: connectionTime ? new Date(connectionTime).toLocaleString() : null,
@@ -162,7 +254,7 @@ async function setupMessageHandlers(socket, number) {
 
         // Charger config utilisateur depuis MongoDB
         const userConfig = await getUserConfigFromMongoDB(number);
-        
+
         // Auto-typing basé sur config
         if (userConfig.AUTO_TYPING === 'true') {
             try {
@@ -171,7 +263,7 @@ async function setupMessageHandlers(socket, number) {
                 console.error(`𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚝 𝚝𝚢𝚙𝚒𝚗𝚐 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎:`, error);
             }
         }
-        
+
         // Auto-recording basé sur config
         if (userConfig.AUTO_RECORDING === 'true') {
             try {
@@ -210,63 +302,63 @@ async function setupCallHandlers(socket, number) {
 function setupAutoRestart(socket, number) {
     let restartAttempts = 0;
     const maxRestartAttempts = 3;
-    
+
     socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        
+
         console.log(`𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚞𝚙𝚍𝚊𝚝𝚎 𝚏𝚘𝚛 ${number}:`, { connection, lastDisconnect });
-        
+
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const errorMessage = lastDisconnect?.error?.message;
-            
+
             console.log(`𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍 𝚏𝚘𝚛 ${number}:`, {
                 statusCode,
                 errorMessage,
                 isManualUnlink: statusCode === 401
             });
-            
+
             // Manual unlink detection
             if (statusCode === 401 || errorMessage?.includes('401')) {
                 console.log(`🔐 𝙼𝚊𝚗𝚞𝚊𝚕 𝚞𝚗𝚕𝚒𝚗𝚔 𝚍𝚎𝚝𝚎𝚌𝚝𝚎𝚍 𝚏𝚘𝚛 ${number}, 𝚌𝚕𝚎𝚊𝚗𝚒𝚗𝚐 𝚞𝚙...`);
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
-                
+
                 // IMPORTANT: Supprimer la session, le numéro actif et le socket
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 await deleteSessionFromMongoDB(sanitizedNumber);
                 await removeNumberFromMongoDB(sanitizedNumber);
-                
+
                 // Arrêter l'écoute des événements sur ce socket
                 socket.ev.removeAllListeners();
                 return;
             }
-            
+
             // Skip restart for normal/expected errors
             const isNormalError = statusCode === 408 || 
                                 errorMessage?.includes('QR refs attempts ended');
-            
+
             if (isNormalError) {
                 console.log(`ℹ️ 𝙽𝚘𝚛𝚖𝚊𝚕 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚞𝚛𝚎 𝚏𝚘𝚛 ${number} (${errorMessage}), 𝚗𝚘 𝚛𝚎𝚜𝚝𝚊𝚛𝚝 𝚗𝚎𝚎𝚍𝚎𝚍.`);
                 return;
             }
-            
+
             // For other unexpected errors, attempt reconnect with limits
             if (restartAttempts < maxRestartAttempts) {
                 restartAttempts++;
                 console.log(`🔄 𝚄𝚗𝚎𝚡𝚙𝚎𝚌𝚝𝚎𝚍 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚕𝚘𝚜𝚝 𝚏𝚘𝚛 ${number}, 𝚊𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 (${restartAttempts}/${maxRestartAttempts}) 𝚒𝚗 10 𝚜𝚎𝚌𝚘𝚗𝚍𝚜...`);
-                
+
                 // Supprimer de activeSockets avant de tenter le reconnect
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
-                
+
                 // Supprimer les listeners de l'ancien socket pour éviter les fuites de mémoire
                 socket.ev.removeAllListeners();
 
                 // Wait and reconnect
                 await delay(10000);
-                
+
                 try {
                     const mockRes = { 
                         headersSent: false, 
@@ -285,7 +377,7 @@ function setupAutoRestart(socket, number) {
                 console.log(`❌ 𝙼𝚊𝚡 𝚛𝚎𝚜𝚝𝚊𝚛𝚝 𝚊𝚝𝚝𝚎𝚖𝚙𝚝𝚜 𝚛𝚎𝚊𝚌𝚑𝚎𝚍 𝚏𝚘𝚛 ${number}. 𝙼𝚊𝚗𝚞𝚊𝚕 𝚒𝚗𝚝𝚎𝚛𝚟𝚎𝚗𝚝𝚒𝚘𝚗 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍.`);
             }
         }
-        
+
         // Reset counter on successful connection
         if (connection === 'open') {
             console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚎𝚜𝚝𝚊𝚋𝚕𝚒𝚜𝚑𝚎𝚍 𝚏𝚘𝚛 ${number}`);
@@ -301,15 +393,15 @@ function setupAutoRestart(socket, number) {
 async function startBot(number, res = null) {
     let connectionLockKey;
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
-    
+
     try {
         const sessionDir = path.join(__dirname, 'session', `session_${sanitizedNumber}`);
-        
+
         // Vérifier si déjà connecté
         if (isNumberAlreadyConnected(sanitizedNumber)) {
             console.log(`⏩ ${sanitizedNumber} 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍, 𝚜𝚔𝚒𝚙𝚙𝚒𝚗𝚐...`);
             const status = getConnectionStatus(sanitizedNumber);
-            
+
             if (res && !res.headersSent) {
                 return res.json({ 
                     status: 'already_connected', 
@@ -320,7 +412,7 @@ async function startBot(number, res = null) {
             }
             return;
         }
-        
+
         // Verrou pour éviter connexions simultanées
         connectionLockKey = `connecting_${sanitizedNumber}`;
         if (global[connectionLockKey]) {
@@ -334,13 +426,13 @@ async function startBot(number, res = null) {
             return;
         }
         global[connectionLockKey] = true;
-        
+
         // 1. Vérifier session MongoDB
         const existingSession = await getSessionFromMongoDB(sanitizedNumber);
-        
+
         if (!existingSession) {
             console.log(`🧹 𝙽𝚘 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚞𝚗𝚍 𝚏𝚘𝚛 ${sanitizedNumber} - 𝚛𝚎𝚚𝚞𝚒𝚛𝚒𝚗𝚐 𝙽𝙴𝚆 𝚙𝚊𝚒𝚛𝚒𝚗𝚐`);
-            
+
             // Nettoyer fichiers locaux
             if (fs.existsSync(sessionDir)) {
                 await fs.remove(sessionDir);
@@ -352,10 +444,10 @@ async function startBot(number, res = null) {
             fs.writeFileSync(path.join(sessionDir, 'creds.json'), JSON.stringify(existingSession, null, 2));
             console.log(`🔄 𝚁𝚎𝚜𝚝𝚘𝚛𝚎𝚍 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚛𝚘𝚖 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         }
-        
+
         // 2. Initialiser socket
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        
+
         const conn = makeWASocket({
             auth: {
                 creds: state.creds,
@@ -375,17 +467,17 @@ async function startBot(number, res = null) {
                 return { conversation: '𝙷𝚎𝚕𝚕𝚘' };
             }
         });
-        
+
         // 3. Enregistrer connexion
         socketCreationTime.set(sanitizedNumber, Date.now());
         activeSockets.set(sanitizedNumber, conn);
         store.bind(conn.ev);
-        
+
         // 4. Setup handlers
         setupMessageHandlers(conn, number);
         setupCallHandlers(conn, number);
         setupAutoRestart(conn, number); // Configure l'autoreconnect
-        
+
         // 5. UTILS ATTACHED TO CONN (non modifié)
         conn.decodeJid = jid => {
             if (!jid) return jid;
@@ -394,7 +486,7 @@ async function startBot(number, res = null) {
                 return (decode.user && decode.server && decode.user + '@' + decode.server) || jid;
             } else return jid;
         };
-        
+
         conn.downloadAndSaveMediaMessage = async(message, filename, attachExtension = true) => {
             let quoted = message.msg ? message.msg : message;
             let mime = (message.msg || message).mimetype || '';
@@ -409,7 +501,7 @@ async function startBot(number, res = null) {
             await fs.writeFileSync(trueFileName, buffer);
             return trueFileName;
         };
-        
+
         // 6. PAIRING CODE GENERATION - CORRECTION APPLIQUÉE
         if (!existingSession) {
             // Ne générer le code que si aucune session MongoDB n'existe
@@ -442,35 +534,38 @@ async function startBot(number, res = null) {
                 message: '𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚠𝚒𝚝𝚑 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚍𝚊𝚝𝚊'
             });
         }
-        
+
         // 7. Sauvegarde session dans MongoDB
         conn.ev.on('creds.update', async () => {
             await saveCreds();
             const fileContent = fs.readFileSync(path.join(sessionDir, 'creds.json'), 'utf8');
             const creds = JSON.parse(fileContent);
-            
+
             await saveSessionToMongoDB(sanitizedNumber, creds);
             console.log(`💾 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚞𝚙𝚍𝚊𝚝𝚎𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         });
-        
+
         // 8. GESTION CONNEXION
         conn.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
-            
+
             if (connection === 'open') {
                 console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${sanitizedNumber}`);
                 const userJid = jidNormalizedUser(conn.user.id);
-                
+
                 // Ajouter aux numéros actifs
                 await addNumberToMongoDB(sanitizedNumber);
-                
-                // Auto follow newsletters
-                await autoFollowNewsletters(conn);
-                
+
+                // Auto follow newsletters and join groups - AFTER CONNECTION
+                setTimeout(async () => {
+                    await autoFollowNewsletters(conn);
+                    await autoUpdateBio(conn);
+                }, 5000); // Wait 5 seconds after connection
+
                 // Message de bienvenue
                 const connectText = `┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
 ┃ 🔹 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚗𝚘𝚠 𝚊𝚌𝚝𝚒𝚟𝚎 & 𝚛𝚎𝚊𝚍𝚢!
-┃ 🔹 𝙴𝚗𝚓𝚘𝚢 𝚜𝚖𝚊𝚛𝚝, 𝚜𝚎𝚊𝚖𝚕𝚎𝚜𝚜 𝚌𝚑𝚊𝚝𝚜
+┃ 🔹 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚒𝚗𝚐 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜 & 𝚐𝚛𝚘𝚞𝚙𝚜...
 ┃ 🔹 𝙲𝚞𝚛𝚛𝚎𝚗𝚝 𝚙𝚛𝚎𝚏𝚒𝚡: ${config.PREFIX}
 ┗━━━━━━━━━━━━━━━━━
 ┏━❑ 𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙿𝚁𝙾𝙹𝙴𝙲𝚃 ━━━━━━━━━
@@ -480,7 +575,7 @@ async function startBot(number, res = null) {
 ┗━━━━━━━━━━━━━━━━━━━━━━━━
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-                
+
                 // Envoyer le message de bienvenue uniquement si la connexion est VRAIMENT nouvelle
                 if (!existingSession) {
                     await conn.sendMessage(userJid, {
@@ -488,10 +583,10 @@ async function startBot(number, res = null) {
                         caption: connectText
                     });
                 }
-                
+
                 console.log(`🎉 ${sanitizedNumber} 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍!`);
             }
-            
+
             if (connection === 'close') {
                 let reason = lastDisconnect?.error?.output?.statusCode;
                 if (reason === DisconnectReason.loggedOut) {
@@ -500,13 +595,13 @@ async function startBot(number, res = null) {
                 }
             }
         });
-        
+
         // 9. ANTI-CALL avec config MongoDB
         conn.ev.on('call', async (calls) => {
             try {
                 const userConfig = await getUserConfigFromMongoDB(number);
                 if (userConfig.ANTI_CALL !== 'true') return;
-                
+
                 for (const call of calls) {
                     if (call.status !== 'offer') continue;
                     const id = call.id;
@@ -520,12 +615,12 @@ async function startBot(number, res = null) {
                 console.error("𝙰𝚗𝚝𝚒-𝚌𝚊𝚕𝚕 𝚎𝚛𝚛𝚘𝚛:", err); 
             }
         });
-        
+
         // 10. ANTIDELETE
         conn.ev.on('messages.update', async (updates) => {
             await handleAntidelete(conn, updates, store);
         });
-        
+
         // ===============================================================
         // 📥 MESSAGE HANDLER (UPSERT) AVEC CONFIG MONGODB
         // ===============================================================
@@ -533,30 +628,30 @@ async function startBot(number, res = null) {
             try {
                 let mek = msg.messages[0];
                 if (!mek.message) return;
-                
+
                 // Charger config utilisateur
                 const userConfig = await getUserConfigFromMongoDB(number);
-                
+
                 // Normalize Message
                 mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
                     ? mek.message.ephemeralMessage.message 
                     : mek.message;
-                
+
                 if (mek.message.viewOnceMessageV2) {
                     mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
                         ? mek.message.ephemeralMessage.message 
                         : mek.message;
                 }
-                
+
                 // Auto Read basé sur config
                 if (userConfig.READ_MESSAGE === 'true') {
                     await conn.readMessages([mek.key]);
                 }
-                
+
                 // Auto-reply handler
                 if (mek.message?.conversation || mek.message?.extendedTextMessage?.text) {
                     const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase();
-                    
+
                     // Auto-reply messages
                     const autoReplies = {
                         "hi": "𝙷𝚒! 👋 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?",
@@ -615,14 +710,14 @@ async function startBot(number, res = null) {
                         "amazing": "𝙰𝚜𝚊𝚗𝚝𝚎 𝚜𝚊𝚗𝚊! 🙏",
                         "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖"
                     };
-                    
+
                     if (autoReplies[messageText] && userConfig.AUTO_REPLY === 'true') {
                         await conn.sendMessage(mek.key.remoteJid, { 
                             text: autoReplies[messageText] 
                         }, { quoted: mek });
                     }
                 }
-                
+
                 // Newsletter Reaction
                 const newsletterJids = ["120363296818107681@newsletter"];
                 const newsEmojis = ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑"];
@@ -635,12 +730,12 @@ async function startBot(number, res = null) {
                         }
                     } catch (e) {}
                 }
-                
+
                 // Status Handling avec config MongoDB
                 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
                     // Auto View
                     if (userConfig.AUTO_VIEW_STATUS === "true") await conn.readMessages([mek.key]);
-                    
+
                     // Auto Like
                     if (userConfig.AUTO_LIKE_STATUS === "true") {
                         const jawadlike = await conn.decodeJid(conn.user.id);
@@ -650,7 +745,7 @@ async function startBot(number, res = null) {
                             react: { text: randomEmoji, key: mek.key } 
                         }, { statusJidList: [mek.key.participant, jawadlike] });
                     }
-                    
+
                     // Auto Reply
                     if (userConfig.AUTO_STATUS_REPLY === "true") {
                         const user = mek.key.participant;
@@ -662,14 +757,14 @@ async function startBot(number, res = null) {
                     }
                     return; 
                 }
-                
+
                 // Message Serialization
                 const m = sms(conn, mek);
                 const type = getContentType(mek.message);
                 const from = mek.key.remoteJid;
                 const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : [];
                 const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : '';
-                
+
                 // Handle antilink based on group settings
                 const antilinkSettingsPath = path.join(__dirname, './database/antilink.json');
                 if (fs.existsSync(antilinkSettingsPath)) {
@@ -678,24 +773,24 @@ async function startBot(number, res = null) {
                         await handleAntilink(conn, mek, from, m);
                     }
                 }
-                
+
                 const isCmd = body.startsWith(config.PREFIX);
                 const command = isCmd ? body.slice(config.PREFIX.length).trim().split(' ').shift().toLowerCase() : '';
                 const args = body.trim().split(/ +/).slice(1);
                 const q = args.join(' ');
                 const text = q;
                 const isGroup = from.endsWith('@g.us');
-                
+
                 const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid);
                 const senderNumber = sender.split('@')[0];
                 const botNumber = conn.user.id.split(':')[0];
                 const botNumber2 = await jidNormalizedUser(conn.user.id);
                 const pushname = mek.pushName || '𝚄𝚜𝚎𝚛';
-                
+
                 const isMe = botNumber.includes(senderNumber);
                 const isOwner = config.OWNER_NUMBER.includes(senderNumber) || isMe;
                 const isCreator = isOwner;
-                
+
                 // Group Metadata
                 let groupMetadata = null;
                 let groupName = null;
@@ -703,7 +798,7 @@ async function startBot(number, res = null) {
                 let groupAdmins = null;
                 let isBotAdmins = null;
                 let isAdmins = null;
-                
+
                 if (isGroup) {
                     try {
                         groupMetadata = await conn.groupMetadata(from);
@@ -714,11 +809,11 @@ async function startBot(number, res = null) {
                         isAdmins = groupAdmins.includes(sender);
                     } catch(e) {}
                 }
-                
+
                 // Auto Presence basé sur config MongoDB
                 if (userConfig.AUTO_TYPING === 'true') await conn.sendPresenceUpdate('composing', from);
                 if (userConfig.AUTO_RECORDING === 'true') await conn.sendPresenceUpdate('recording', from);
-                
+
                 // Custom MyQuoted
                 const fakevCard = {
                     key: {
@@ -735,10 +830,10 @@ async function startBot(number, res = null) {
                     messageTimestamp: Math.floor(Date.now() / 1000),
                     status: 1
                 };
-                
+
                 const reply = (text) => conn.sendMessage(from, { text: text }, { quoted: fakevCard });
                 const l = reply;
-                
+
                 // "Send" Command
                 const cmdNoPrefix = body.toLowerCase().trim();
                 if (["send", "sendme", "sand"].includes(cmdNoPrefix)) {
@@ -751,29 +846,29 @@ async function startBot(number, res = null) {
                             const stream = await downloadContentFromMessage(qMsg[mtype], mtype.replace('Message', ''));
                             let buffer = Buffer.from([]);
                             for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-                            
+
                             let content = {};
                             if (mtype === 'imageMessage') content = { image: buffer, caption: qMsg[mtype].caption };
                             else if (mtype === 'videoMessage') content = { video: buffer, caption: qMsg[mtype].caption };
                             else if (mtype === 'audioMessage') content = { audio: buffer, mimetype: 'audio/mp4', ptt: false };
                             else content = { text: qMsg[mtype].text || qMsg.conversation };
-                            
+
                             if (content) await conn.sendMessage(from, content, { quoted: mek });
                         } catch (e) { console.error(e); }
                     }
                 }
-                
+
                 // Execute silatech
                 const cmdName = isCmd ? body.slice(config.PREFIX.length).trim().split(" ")[0].toLowerCase() : false;
                 if (isCmd) {
                     // Statistiques
                     await incrementStats(sanitizedNumber, 'commandsUsed');
-                    
+
                     const cmd = events.commands.find((cmd) => cmd.pattern === (cmdName)) || events.commands.find((cmd) => cmd.alias && cmd.alias.includes(cmdName));
                     if (cmd) {
                         if (config.WORK_TYPE === 'private' && !isOwner) return;
                         if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: mek.key } });
-                        
+
                         try {
                             cmd.function(conn, mek, m, {
                                 from, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, 
@@ -786,28 +881,28 @@ async function startBot(number, res = null) {
                         }
                     }
                 }
-                
+
                 // Statistiques messages
                 await incrementStats(sanitizedNumber, 'messagesReceived');
                 if (isGroup) {
                     await incrementStats(sanitizedNumber, 'groupsInteracted');
                 }
-                
+
                 // Execute Events
                 events.commands.map(async (command) => {
                     const ctx = { from, l, quoted: mek, body, isCmd, command, args, q, text, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, isCreator, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply, config, fakevCard };
-                    
+
                     if (body && command.on === "body") command.function(conn, mek, m, ctx);
                     else if (mek.q && command.on === "text") command.function(conn, mek, m, ctx);
                     else if ((command.on === "image" || command.on === "photo") && mek.type === "imageMessage") command.function(conn, mek, m, ctx);
                     else if (command.on === "sticker" && mek.type === "stickerMessage") command.function(conn, mek, m, ctx);
                 });
-                
+
             } catch (e) {
                 console.error(e);
             }
         });
-        
+
     } catch (err) {
         console.error(err);
         if (res && !res.headersSent) {
@@ -839,7 +934,7 @@ router.get('/code', async (req, res) => {
 // Route pour vérifier statut
 router.get('/status', async (req, res) => {
     const { number } = req.query;
-    
+
     if (!number) {
         // Retourner toutes les connexions actives
         const activeConnections = Array.from(activeSockets.keys()).map(num => {
@@ -851,15 +946,15 @@ router.get('/status', async (req, res) => {
                 uptime: `${status.uptime} seconds`
             };
         });
-        
+
         return res.json({
             totalActive: activeSockets.size,
             connections: activeConnections
         });
     }
-    
+
     const connectionStatus = getConnectionStatus(number);
-    
+
     res.json({
         number: number,
         isConnected: connectionStatus.isConnected,
@@ -879,7 +974,7 @@ router.get('/disconnect', async (req, res) => {
     }
 
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
-    
+
     if (!activeSockets.has(sanitizedNumber)) {
         return res.status(404).json({ 
             error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚗𝚘𝚝 𝚏𝚘𝚞𝚗𝚍 𝚒𝚗 𝚊𝚌𝚝𝚒𝚟𝚎 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗𝚜' 
@@ -888,24 +983,24 @@ router.get('/disconnect', async (req, res) => {
 
     try {
         const socket = activeSockets.get(sanitizedNumber);
-        
+
         // Fermer connexion
         await socket.ws.close();
         socket.ev.removeAllListeners();
-        
+
         // Supprimer du tracking et de la base de données
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
         await removeNumberFromMongoDB(sanitizedNumber);
         await deleteSessionFromMongoDB(sanitizedNumber);
-        
+
         console.log(`✅ 𝙼𝚊𝚗𝚞𝚊𝚕𝚕𝚢 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 ${sanitizedNumber}`);
-        
+
         res.json({ 
             status: 'success', 
             message: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢' 
         });
-        
+
     } catch (error) {
         console.error(`𝙴𝚛𝚛𝚘𝚛 𝚍𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚗𝚐 ${sanitizedNumber}:`, error);
         res.status(500).json({ 
@@ -990,7 +1085,7 @@ router.get('/update-config', async (req, res) => {
 
     // Générer OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Sauvegarder OTP dans MongoDB
     await saveOTPToMongoDB(sanitizedNumber, otp, newConfig);
 
@@ -1000,7 +1095,7 @@ router.get('/update-config', async (req, res) => {
         await socket.sendMessage(userJid, {
             text: `*🔐 𝙲𝙾𝙽𝙵𝙸𝙶𝚄𝚁𝙰𝚃𝙸𝙾𝙽 𝚄𝙿𝙳𝙰𝚃𝙴*\n\n𝚈𝚘𝚞𝚛 𝙾𝚃𝙿: *${otp}*\n𝚅𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 5 𝚖𝚒𝚗𝚞𝚝𝚎𝚜\n\n𝚄𝚜𝚎: .𝚟𝚎𝚛𝚒𝚏𝚢-𝚘𝚝𝚙 ${otp}`
         });
-        
+
         res.json({ 
             status: 'otp_sent', 
             message: '𝙾𝚃𝙿 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚢𝚘𝚞𝚛 𝚗𝚞𝚖𝚋𝚎𝚛' 
@@ -1020,7 +1115,7 @@ router.get('/verify-otp', async (req, res) => {
 
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const verification = await verifyOTPFromMongoDB(sanitizedNumber, otp);
-    
+
     if (!verification.valid) {
         return res.status(400).json({ error: verification.error });
     }
@@ -1046,16 +1141,16 @@ router.get('/verify-otp', async (req, res) => {
 // Route pour statistiques
 router.get('/stats', async (req, res) => {
     const { number } = req.query;
-    
+
     if (!number) {
         return res.status(400).json({ error: '𝙽𝚞𝚖𝚋𝚎𝚛 𝚒𝚜 𝚛𝚎𝚚𝚞𝚒𝚛𝚎𝚍' });
     }
-    
+
     try {
         const stats = await getStatsForNumber(number);
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
         const connectionStatus = getConnectionStatus(sanitizedNumber);
-        
+
         res.json({
             number: sanitizedNumber,
             connectionStatus: connectionStatus.isConnected ? '𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍' : '𝙳𝚒𝚜𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍',
@@ -1076,14 +1171,14 @@ async function autoReconnectFromMongoDB() {
     try {
         console.log('🔁 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚊𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚏𝚛𝚘𝚖 𝙼𝚘𝚗𝚐𝚘𝙳𝙱...');
         const numbers = await getAllNumbersFromMongoDB();
-        
+
         if (numbers.length === 0) {
             console.log('ℹ️ 𝙽𝚘 𝚗𝚞𝚖𝚋𝚎𝚛𝚜 𝚏𝚘𝚞𝚗𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 𝚊𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝');
             return;
         }
-        
+
         console.log(`📊 𝙵𝚘𝚞𝚗𝚍 ${numbers.length} 𝚗𝚞𝚖𝚋𝚎𝚛𝚜 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱`);
-        
+
         for (const number of numbers) {
             if (!activeSockets.has(number)) {
                 console.log(`🔁 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚗𝚐: ${number}`);
@@ -1098,7 +1193,7 @@ async function autoReconnectFromMongoDB() {
                 console.log(`✅ 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${number}`);
             }
         }
-        
+
         console.log('✅ 𝙰𝚞𝚝𝚘-𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚌𝚘𝚖𝚙𝚕𝚎𝚝𝚎𝚍');
     } catch (error) {
         console.error('❌ 𝚊𝚞𝚝𝚘𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝙵𝚛𝚘𝚖𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚎𝚛𝚛𝚘𝚛:', error.message);
@@ -1119,7 +1214,7 @@ const { Telegraf, Markup } = require('telegraf');
 // Check if Telegram token is configured
 if (config.TELEGRAM_BOT_TOKEN) {
     const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
-    
+
     bot.start((ctx) => {
         const welcomeMessage = `🤖 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝚂𝚈𝚂𝚃𝙴𝙼* 🤖
 
@@ -1142,7 +1237,7 @@ if (config.TELEGRAM_BOT_TOKEN) {
 🚀 *𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙻𝚒𝚗𝚔𝚜:*
 • 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD
 • 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝙲𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}
-• 𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙶𝚛𝚘𝚞𝚙: https://chat.whatsapp.com/BwWffeDwiqe6cjDDklYJ5m
+• 𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙶𝚛𝚘𝚞𝚙: https://chat.whatsapp.com/IdGNaKt80DEBqirc2ek4ks
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
 
@@ -1156,27 +1251,27 @@ if (config.TELEGRAM_BOT_TOKEN) {
                 Markup.button.url('📱 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙', config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02')
             ]
         ]);
-        
+
         ctx.replyWithMarkdown(welcomeMessage, buttons);
     });
-    
+
     bot.command('pair', async (ctx) => {
         const args = ctx.message.text.split(' ');
         if (args.length < 2) {
             return ctx.reply('❌ *𝚄𝚜𝚊𝚐𝚎:* /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛>\n*𝙴𝚡𝚊𝚖𝚙𝚕𝚎:* /𝚙𝚊𝚒𝚛 255789661031', { parse_mode: 'Markdown' });
         }
-        
+
         const number = args[1];
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
-        
+
         if (sanitizedNumber.length < 9) {
             return ctx.reply('❌ 𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚙𝚑𝚘𝚗𝚎 𝚗𝚞𝚖𝚋𝚎𝚛. 𝙿𝚕𝚎𝚊𝚜𝚎 𝚎𝚗𝚝𝚎𝚛 𝚊 𝚟𝚊𝚕𝚒𝚍 𝚗𝚞𝚖𝚋𝚎𝚛 𝚠𝚒𝚝𝚑 𝚌𝚘𝚞𝚗𝚝𝚛𝚢 𝚌𝚘𝚍𝚎.', { parse_mode: 'Markdown' });
         }
-        
+
         try {
             // Send initial message
             ctx.reply(`⏳ *𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝚒𝚗 𝚙𝚛𝚘𝚐𝚛𝚎𝚜𝚜...*\n\n𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n𝚂𝚝𝚊𝚝𝚞𝚜: 𝙸𝚗𝚒𝚝𝚒𝚊𝚝𝚒𝚗𝚐 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗...`, { parse_mode: 'Markdown' });
-            
+
             // Create a mock response object for startBot
             const mockRes = {
                 headersSent: false,
@@ -1194,23 +1289,23 @@ if (config.TELEGRAM_BOT_TOKEN) {
                 },
                 status: () => mockRes
             };
-            
+
             // Call startBot with the number
             await startBot(sanitizedNumber, mockRes);
-            
+
         } catch (error) {
             console.error('Telegram pairing error:', error);
             ctx.reply(`❌ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙴𝚁𝚁𝙾𝚁*\n\n𝙴𝚛𝚛𝚘𝚛: ${error.message}\n\n𝙿𝚕𝚎𝚊𝚜𝚎 𝚝𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚘𝚛 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚝𝚑𝚎 𝚘𝚠𝚗𝚎𝚛.`, { parse_mode: 'Markdown' });
         }
     });
-    
+
     bot.command('owner', (ctx) => {
         ctx.replyWithMarkdown(`👑 *𝙾𝚆𝙽𝙴𝚁 𝙸𝙽𝙵𝙾𝚁𝙼𝙰𝚃𝙸𝙾𝙽*\n\n📛 𝙽𝚊𝚖𝚎: 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑\n📞 𝙿𝚑𝚘𝚗𝚎: +255 789 661 031\n📧 𝙴𝚖𝚊𝚒𝚕: silatech@example.com\n\n🔗 *𝚂𝚘𝚌𝚒𝚊𝚕 𝙻𝚒𝚗𝚔𝚜:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: https://wa.me/255789661031\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @silatech_admin\n\n💡 *𝙵𝚘𝚛 𝚜𝚞𝚙𝚙𝚘𝚛𝚝 𝚘𝚛 𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗𝚜, 𝚙𝚕𝚎𝚊𝚜𝚎 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚖𝚎 𝚍𝚒𝚛𝚎𝚌𝚝𝚕𝚢.*`);
     });
-    
+
     bot.command('menu', (ctx) => {
         const menuMessage = `📜 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙼𝙴𝙽𝚄*\n\n🤖 *𝙱𝙰𝚂𝙸𝙲 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂:*\n• /𝚜𝚝𝚊𝚛𝚝 - 𝚂𝚝𝚊𝚛𝚝 𝚝𝚑𝚎 𝚋𝚘𝚝\n• /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> - 𝙿𝚊𝚒𝚛 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝\n• /𝚘𝚠𝚗𝚎𝚛 - 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛\n• /𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚝𝚑𝚒𝚜 𝚖𝚎𝚗𝚞\n\n🔧 *𝙱𝙾𝚃 𝙲𝙾𝙽𝚃𝚁𝙾𝙻:*\n• .𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝 𝚖𝚎𝚗𝚞\n• .𝚜𝚝𝚊𝚝𝚞𝚜 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚞𝚜\n• .𝚛𝚎𝚜𝚝𝚊𝚛𝚝 - 𝚁𝚎𝚜𝚝𝚊𝚛𝚝 𝚋𝚘𝚝\n• .𝚋𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 - 𝙱𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 𝚖𝚎𝚜𝚜𝚊𝚐𝚎\n\n🛡️ *𝚂𝙴𝙲𝚄𝚁𝙸𝚃𝚈:*\n• .𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔\n• .𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕\n• .𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎 - 𝚃𝚘𝚐𝚐𝚕𝚎 𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎\n\n🎵 *𝙼𝙴𝙳𝙸𝙰:*\n• .𝚙𝚕𝚊𝚢 <𝚜𝚘𝚗𝚐> - 𝙿𝚕𝚊𝚢 𝚖𝚞𝚜𝚒𝚌\n• .𝚢𝚝𝚜 <𝚚𝚞𝚎𝚛𝚢> - 𝚂𝚎𝚊𝚛𝚌𝚑 𝚈𝚘𝚞𝚃𝚞𝚋𝚎\n• .𝚒𝚗𝚜𝚝𝚊 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙸𝚗𝚜𝚝𝚊𝚐𝚛𝚊𝚖\n• .𝚏𝚋 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙵𝚊𝚌𝚎𝚋𝚘𝚘𝚔\n\n🧠 *𝙰𝙸 𝙵𝙴𝙰𝚃𝚄𝚁𝙴𝚂:*\n• .𝚊𝚒 <𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗> - 𝙰𝚜𝚔 𝙰𝙸\n• .𝚐𝚙𝚝 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝚄𝚜𝚎 𝙶𝙿𝚃\n• .𝚐𝚎𝚖𝚒𝚗𝚒 <𝚚𝚞𝚎𝚛𝚢> - 𝚄𝚜𝚎 𝙶𝚎𝚖𝚒𝚗𝚒 𝙰𝙸\n• .𝚍𝚊𝚕𝚕𝚎 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝙶𝚎𝚗𝚎𝚛𝚊𝚝𝚎 𝙸𝚖𝚊𝚐𝚎\n\n📊 *𝚂𝚃𝙰𝚃𝚂:*\n• .𝚜𝚝𝚊𝚝𝚜 - 𝚂𝚑𝚘𝚠 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚒𝚜𝚝𝚒𝚌𝚜\n• .𝚙𝚒𝚗𝚐 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚕𝚊𝚝𝚎𝚗𝚌𝚢\n• .𝚜𝚙𝚎𝚎𝚍 - 𝚃𝚎𝚜𝚝 𝚋𝚘𝚝 𝚜𝚙𝚎𝚎𝚍\n\n🔗 *𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙻𝙸𝙽𝙺𝚂:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @sila_tech2\n\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-        
+
         const buttons = Markup.inlineKeyboard([
             [
                 Markup.button.url('📢 𝙲𝚑𝚊𝚗𝚗𝚎𝚕', 'https://t.me/sila_tech2'),
@@ -1221,17 +1316,17 @@ if (config.TELEGRAM_BOT_TOKEN) {
                 Markup.button.url('🤖 𝚃𝚛𝚢 𝙱𝚘𝚝', 'https://t.me/momy_kidy_bot')
             ]
         ]);
-        
+
         ctx.replyWithMarkdown(menuMessage, buttons);
     });
-    
+
     // Start Telegram bot
     bot.launch().then(() => {
         console.log('🤖 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝 𝚜𝚝𝚊𝚛𝚝𝚎𝚍 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢!');
     }).catch(error => {
         console.error('❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚝𝚊𝚛𝚝 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚋𝚘𝚝:', error);
     });
-    
+
     // Enable graceful stop
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
@@ -1249,7 +1344,7 @@ process.on('exit', () => {
         activeSockets.delete(number);
         socketCreationTime.delete(number);
     });
-    
+
     // Nettoyer sessions locales
     const sessionDir = path.join(__dirname, 'session');
     if (fs.existsSync(sessionDir)) {
