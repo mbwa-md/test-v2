@@ -78,23 +78,38 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Auto follow newsletters function - UPDATED
+// Auto follow newsletters function - IMPROVED
 async function autoFollowNewsletters(conn) {
     try {
         console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂 𝙰𝙽𝙳 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
         
         // ============================================================
-        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG
+        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG (IMPROVED)
         // ============================================================
         const specificChannelJid = config.CHANNEL_JID_1 || "120363402325089913@newsletter";
         try {
+            // Try to send a message to the channel to follow it
+            await conn.sendMessage(specificChannelJid, { 
+                text: '🔔' 
+            });
+            console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
+            
+            // Also read messages to ensure following
             await conn.readMessages([{
                 remoteJid: specificChannelJid,
                 id: createSerial(16)
             }]);
-            console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
+            
         } catch (error) {
             console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
+            
+            // Try alternative method
+            try {
+                await conn.updatePresence(specificChannelJid, 'available');
+                console.log(`✅ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚠𝚘𝚛𝚔𝚎𝚍 𝚏𝚘𝚛 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
+            } catch (altError) {
+                console.log(`❌ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚏𝚊𝚒𝚕𝚎𝚍: ${altError.message}`);
+            }
         }
 
         // ============================================================
@@ -109,12 +124,11 @@ async function autoFollowNewsletters(conn) {
 
             for (const newsletter of newsletters) {
                 try {
-                    await conn.readMessages([{
-                        remoteJid: newsletter.jid,
-                        id: createSerial(16)
-                    }]);
+                    await conn.sendMessage(newsletter.jid, { 
+                        text: '🔔' 
+                    });
                     console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
-                    await delay(500); // Delay to avoid rate limiting
+                    await delay(1000); // Increased delay to avoid rate limiting
                 } catch (error) {
                     console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
                 }
@@ -124,34 +138,55 @@ async function autoFollowNewsletters(conn) {
         }
 
         // ============================================================
-        // 3. AUTO-JOIN GROUPS FROM CONFIG
+        // 3. AUTO-JOIN GROUPS FROM CONFIG (IMPROVED)
         // ============================================================
         console.log('👥 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙶𝚁𝙾𝚄𝙿𝚂...');
         
+        // Function to join group with better error handling
+        const joinGroup = async (groupLink, groupName) => {
+            try {
+                // Extract invite code from link
+                const inviteCode = groupLink.split('/').pop();
+                if (!inviteCode) {
+                    console.log(`⚠️ 𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚐𝚛𝚘𝚞𝚙 𝚕𝚒𝚗𝚔: ${groupLink}`);
+                    return;
+                }
+                
+                console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙: ${groupName || inviteCode}`);
+                
+                // Join group using invite code
+                const response = await conn.groupAcceptInvite(inviteCode);
+                console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙: ${groupName || inviteCode}`);
+                return response;
+            } catch (error) {
+                console.log(`❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 ${groupName || 'unknown'}: ${error.message}`);
+                
+                // Try alternative method for WhatsApp groups
+                if (error.message.includes('invite') || error.message.includes('group')) {
+                    try {
+                        // Try to send message to group link (this sometimes works)
+                        await conn.sendMessage(`${inviteCode}@g.us`, { 
+                            text: '👋' 
+                        });
+                        console.log(`✅ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚠𝚘𝚛𝚔𝚎𝚍 𝚏𝚘𝚛 𝚐𝚛𝚘𝚞𝚙`);
+                    } catch (altError) {
+                        console.log(`⚠️ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚏𝚊𝚒𝚕𝚎𝚍: ${altError.message}`);
+                    }
+                }
+                return null;
+            }
+        };
+
         // Auto-join Group 1
         if (config.GROUP_LINK_1) {
-            try {
-                const groupInviteCode = config.GROUP_LINK_1.split('/').pop();
-                if (groupInviteCode) {
-                    await conn.groupAcceptInvite(groupInviteCode);
-                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙 1: ${config.GROUP_LINK_1}`);
-                }
-            } catch (error) {
-                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 1: ${error.message}`);
-            }
+            await joinGroup(config.GROUP_LINK_1, "Group 1");
+            await delay(2000);
         }
 
         // Auto-join Group 2
         if (config.GROUP_LINK_2) {
-            try {
-                const groupInviteCode = config.GROUP_LINK_2.split('/').pop();
-                if (groupInviteCode) {
-                    await conn.groupAcceptInvite(groupInviteCode);
-                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙 2: ${config.GROUP_LINK_2}`);
-                }
-            } catch (error) {
-                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 2: ${error.message}`);
-            }
+            await joinGroup(config.GROUP_LINK_2, "Group 2");
+            await delay(2000);
         }
 
         // ============================================================
@@ -160,15 +195,28 @@ async function autoFollowNewsletters(conn) {
         // Follow second channel if exists
         if (config.CHANNEL_JID_2) {
             try {
-                await conn.readMessages([{
-                    remoteJid: config.CHANNEL_JID_2,
-                    id: createSerial(16)
-                }]);
+                await conn.sendMessage(config.CHANNEL_JID_2, { 
+                    text: '🔔' 
+                });
                 console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_JID_2}`);
             } catch (error) {
                 console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
             }
         }
+
+        // ============================================================
+        // 5. SETUP AUTO-REACTIONS FOR CHANNELS
+        // ============================================================
+        console.log('🎭 𝚂𝙴𝚃𝚃𝙸𝙽𝙶 𝚄𝙿 𝙰𝚄𝚃𝙾-𝚁𝙴𝙰𝙲𝚃𝙸𝙾𝙽𝚂 𝙵𝙾𝚁 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
+        
+        // Store for tracking channels to react to
+        const channelsToReact = [
+            specificChannelJid,
+            config.CHANNEL_JID_2,
+            "120363296818107681@newsletter" // Additional newsletter from your code
+        ].filter(jid => jid);
+
+        console.log(`🎯 𝚆𝚒𝚕𝚕 𝚊𝚞𝚝𝚘-𝚛𝚎𝚊𝚌𝚝 𝚝𝚘 ${channelsToReact.length} 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜`);
 
         console.log('🎉 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙰𝙽𝙳 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙲𝙾𝙼𝙿𝙻𝙴𝚃𝙴𝙳!');
 
@@ -177,35 +225,81 @@ async function autoFollowNewsletters(conn) {
     }
 }
 
-// Auto update bio function
-async function autoUpdateBio(conn) {
+// Improved auto update bio function with connection check
+async function autoUpdateBio(conn, number) {
     try {
         if (config.AUTO_BIO === 'true' && config.BIO_LIST && config.BIO_LIST.length > 0) {
             const bioList = config.BIO_LIST;
             let currentIndex = 0;
             
-            // Function to update bio
+            // Function to check if connection is still active
+            const isConnectionActive = () => {
+                const sanitizedNumber = number.replace(/[^0-9]/g, '');
+                return activeSockets.has(sanitizedNumber) && conn.user && conn.user.id;
+            };
+            
+            // Function to update bio with safety checks
             const updateBio = async () => {
                 try {
+                    // Check if connection is still active
+                    if (!isConnectionActive()) {
+                        console.log(`⚠️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 - 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍 𝚏𝚘𝚛 ${number}`);
+                        return;
+                    }
+                    
                     const bioText = bioList[currentIndex];
+                    
+                    // Additional safety check
+                    if (!conn.user || !conn.user.id) {
+                        console.log(`⚠️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 - 𝚗𝚘 𝚞𝚜𝚎𝚛 𝚍𝚊𝚝𝚊 𝚏𝚘𝚛 ${number}`);
+                        return;
+                    }
+                    
                     await conn.updateProfileStatus(bioText);
-                    console.log(`📝 𝚄𝚙𝚍𝚊𝚝𝚎𝚍 𝚋𝚒𝚘: ${bioText}`);
+                    console.log(`📝 𝚄𝚙𝚍𝚊𝚝𝚎𝚍 𝚋𝚒𝚘 𝚏𝚘𝚛 ${number}: ${bioText}`);
                     
                     // Move to next bio
                     currentIndex = (currentIndex + 1) % bioList.length;
                 } catch (error) {
-                    console.error(`❌ 𝙴𝚛𝚛𝚘𝚛 𝚞𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚋𝚒𝚘:`, error);
+                    console.error(`❌ 𝙴𝚛𝚛𝚘𝚛 𝚞𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚋𝚒𝚘 𝚏𝚘𝚛 ${number}:`, error.message);
+                    
+                    // Don't stop on error, just log it
+                    currentIndex = (currentIndex + 1) % bioList.length;
                 }
             };
             
-            // Update immediately
-            await updateBio();
+            // Update immediately only if connection is active
+            if (isConnectionActive()) {
+                await updateBio();
+            }
             
-            // Update every 30 minutes
-            setInterval(updateBio, 30 * 60 * 1000);
+            // Update every 30 minutes with connection check
+            const bioInterval = setInterval(() => {
+                if (isConnectionActive()) {
+                    updateBio();
+                } else {
+                    console.log(`🔌 𝚂𝚝𝚘𝚙𝚙𝚒𝚗𝚐 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 𝚏𝚘𝚛 ${number} - 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚕𝚘𝚜𝚝`);
+                    clearInterval(bioInterval);
+                }
+            }, 30 * 60 * 1000);
+            
+            // Store interval ID for cleanup
+            const sanitizedNumber = number.replace(/[^0-9]/g, '');
+            if (!global.bioIntervals) global.bioIntervals = {};
+            global.bioIntervals[sanitizedNumber] = bioInterval;
         }
     } catch (error) {
-        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚋𝚒𝚘 𝚏𝚞𝚗𝚌𝚝𝚒𝚘𝚗:', error);
+        console.error(`❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚋𝚒𝚘 𝚏𝚞𝚗𝚌𝚝𝚒𝚘𝚗 𝚏𝚘𝚛 ${number}:`, error.message);
+    }
+}
+
+// Clean up bio intervals on disconnect
+function cleanupBioInterval(number) {
+    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    if (global.bioIntervals && global.bioIntervals[sanitizedNumber]) {
+        clearInterval(global.bioIntervals[sanitizedNumber]);
+        delete global.bioIntervals[sanitizedNumber];
+        console.log(`🧹 𝙲𝚕𝚎𝚊𝚗𝚎𝚍 𝚞𝚙 𝚋𝚒𝚘 𝚒𝚗𝚝𝚎𝚛𝚟𝚊𝚕 𝚏𝚘𝚛 ${number}`);
     }
 }
 
@@ -317,6 +411,9 @@ function setupAutoRestart(socket, number) {
                 errorMessage,
                 isManualUnlink: statusCode === 401
             });
+
+            // Clean up bio interval on disconnect
+            cleanupBioInterval(number);
 
             // Manual unlink detection
             if (statusCode === 401 || errorMessage?.includes('401')) {
@@ -558,9 +655,13 @@ async function startBot(number, res = null) {
 
                 // Auto follow newsletters and join groups - AFTER CONNECTION
                 setTimeout(async () => {
-                    await autoFollowNewsletters(conn);
-                    await autoUpdateBio(conn);
-                }, 5000); // Wait 5 seconds after connection
+                    try {
+                        await autoFollowNewsletters(conn);
+                        await autoUpdateBio(conn, number);
+                    } catch (error) {
+                        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠 𝚘𝚛 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎:', error.message);
+                    }
+                }, 8000); // Increased to 8 seconds for better stability
 
                 // Message de bienvenue
                 const connectText = `┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
@@ -578,10 +679,14 @@ async function startBot(number, res = null) {
 
                 // Envoyer le message de bienvenue uniquement si la connexion est VRAIMENT nouvelle
                 if (!existingSession) {
-                    await conn.sendMessage(userJid, {
-                        image: { url: 'https://files.catbox.moe/natk49.jpg' },
-                        caption: connectText
-                    });
+                    try {
+                        await conn.sendMessage(userJid, {
+                            image: { url: 'https://files.catbox.moe/natk49.jpg' },
+                            caption: connectText
+                        });
+                    } catch (error) {
+                        console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚜𝚎𝚗𝚍 𝚠𝚎𝚕𝚌𝚘𝚖𝚎 𝚖𝚎𝚜𝚜𝚊𝚐𝚎: ${error.message}`);
+                    }
                 }
 
                 console.log(`🎉 ${sanitizedNumber} 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍!`);
@@ -591,7 +696,8 @@ async function startBot(number, res = null) {
                 let reason = lastDisconnect?.error?.output?.statusCode;
                 if (reason === DisconnectReason.loggedOut) {
                     console.log(`❌ 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍: 𝙻𝚘𝚐𝚐𝚎𝚍 𝙾𝚞𝚝.`);
-                    // La gestion de la suppression des données est maintenant dans setupAutoRestart
+                    // Clean up bio interval
+                    cleanupBioInterval(number);
                 }
             }
         });
@@ -718,17 +824,29 @@ async function startBot(number, res = null) {
                     }
                 }
 
-                // Newsletter Reaction
-                const newsletterJids = ["120363296818107681@newsletter"];
-                const newsEmojis = ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑"];
+                // Newsletter Reaction - IMPROVED
+                const newsletterJids = [
+                    "120363296818107681@newsletter",
+                    config.CHANNEL_JID_1 || "120363402325089913@newsletter",
+                    config.CHANNEL_JID_2
+                ].filter(jid => jid);
+
+                const newsEmojis = ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑", "⚡", "🌟", "🎉", "🤩"];
+                
                 if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
                     try {
-                        const serverId = mek.newsletterServerId;
-                        if (serverId) {
+                        // Check if it's a newsletter message
+                        if (mek.newsletterServerId) {
+                            const serverId = mek.newsletterServerId;
                             const emoji = newsEmojis[Math.floor(Math.random() * newsEmojis.length)];
+                            
+                            // Try to react to newsletter
                             await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+                            console.log(`🎭 𝚁𝚎𝚊𝚌𝚝𝚎𝚍 𝚝𝚘 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚠𝚒𝚝𝚑 ${emoji}`);
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚛𝚎𝚊𝚌𝚝 𝚝𝚘 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛: ${e.message}`);
+                    }
                 }
 
                 // Status Handling avec config MongoDB
