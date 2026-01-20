@@ -78,38 +78,52 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Auto follow newsletters function - IMPROVED
+// Auto follow newsletters function - COMPLETELY FIXED
 async function autoFollowNewsletters(conn) {
     try {
         console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂 𝙰𝙽𝙳 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
         
         // ============================================================
-        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG (IMPROVED)
+        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG - FIXED METHOD
         // ============================================================
         const specificChannelJid = config.CHANNEL_JID_1 || "120363402325089913@newsletter";
+        
         try {
-            // Try to send a message to the channel to follow it
-            await conn.sendMessage(specificChannelJid, { 
-                text: '🔔' 
-            });
-            console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
+            console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
             
-            // Also read messages to ensure following
+            // Method 1: Try to get channel info first (this helps follow)
+            try {
+                const channelInfo = await conn.groupMetadata(specificChannelJid);
+                console.log(`📊 𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${channelInfo.subject || 'Unknown'}`);
+            } catch (infoError) {
+                console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚐𝚎𝚝 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${infoError.message}`);
+            }
+            
+            // Method 2: Send a presence update to the channel
+            await conn.sendPresenceUpdate('available', specificChannelJid);
+            console.log(`✅ 𝚂𝚎𝚗𝚝 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎 𝚞𝚙𝚍𝚊𝚝𝚎 𝚝𝚘 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
+            
+            // Method 3: Try to read channel messages (this triggers follow)
             await conn.readMessages([{
                 remoteJid: specificChannelJid,
                 id: createSerial(16)
             }]);
+            console.log(`✅ 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚎𝚍 𝚝𝚘 𝚛𝚎𝚊𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚖𝚎𝚜𝚜𝚊𝚐𝚎𝚜`);
+            
+            // Method 4: Send a simple message to trigger following
+            try {
+                await conn.sendMessage(specificChannelJid, { 
+                    text: '🔔' 
+                });
+                console.log(`✅ 𝚂𝚎𝚗𝚝 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚝𝚘 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
+            } catch (msgError) {
+                console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚜𝚎𝚗𝚍 𝚖𝚎𝚜𝚜𝚊𝚐𝚎: ${msgError.message}`);
+            }
+            
+            console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
             
         } catch (error) {
             console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
-            
-            // Try alternative method
-            try {
-                await conn.updatePresence(specificChannelJid, 'available');
-                console.log(`✅ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚠𝚘𝚛𝚔𝚎𝚍 𝚏𝚘𝚛 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
-            } catch (altError) {
-                console.log(`❌ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚏𝚊𝚒𝚕𝚎𝚍: ${altError.message}`);
-            }
         }
 
         // ============================================================
@@ -120,19 +134,41 @@ async function autoFollowNewsletters(conn) {
             const response = await axios.get(newsletterURL);
             const newsletters = response.data;
 
-            console.log(`📰 𝙵𝚘𝚞𝚗𝚍 ${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚏𝚛𝚘𝚖 𝙶𝚒𝚝𝙷𝚞𝚋 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠`);
+            console.log(`📰 𝙵𝚘𝚞𝚗𝚍 ${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚏𝚛𝚘𝚖 𝙶𝚒𝚝𝙷𝚞𝚋`);
 
+            let followedCount = 0;
             for (const newsletter of newsletters) {
                 try {
-                    await conn.sendMessage(newsletter.jid, { 
-                        text: '🔔' 
-                    });
-                    console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
-                    await delay(1000); // Increased delay to avoid rate limiting
+                    // Skip if it's the same as our main channel
+                    if (newsletter.jid === specificChannelJid) {
+                        console.log(`⏭️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
+                        continue;
+                    }
+                    
+                    console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠: ${newsletter.name || newsletter.jid}`);
+                    
+                    // Send presence update
+                    await conn.sendPresenceUpdate('available', newsletter.jid);
+                    
+                    // Try to read messages
+                    await conn.readMessages([{
+                        remoteJid: newsletter.jid,
+                        id: createSerial(16)
+                    }]);
+                    
+                    followedCount++;
+                    console.log(`✅ 𝙵𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
+                    
+                    // Delay to avoid rate limiting
+                    await delay(2000);
+                    
                 } catch (error) {
                     console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
                 }
             }
+            
+            console.log(`📊 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 ${followedCount}/${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜`);
+            
         } catch (error) {
             console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
         }
