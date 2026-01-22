@@ -157,7 +157,7 @@ cmd({
 // Copilot Command
 cmd({
     pattern: "copilot",
-    alias: ["copilotthink", "copilotai", "microsoftai"],
+    alias: ["think", "copilotai", "microsoftai"],
     desc: "Chat with Microsoft Copilot AI",
     category: "ai",
     react: "💻",
