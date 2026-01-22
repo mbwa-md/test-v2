@@ -34,6 +34,7 @@ const {
 } = require('./lib/database');
 const { handleAntidelete } = require('./lib/antidelete');
 const { handleAntilink } = require('./lib/antilink');
+const { chatbotHandler } = require('./path/to/chatbot.js');
 
 const express = require('express');
 const fs = require('fs-extra');
