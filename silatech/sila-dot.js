@@ -10,7 +10,7 @@ cmd({
         const response = `╭━━【 📱 𝚂𝙸𝙻𝙰 𝚃𝙴𝙲𝙷 】━━━╮
 │ 
 │ 🤖 *𝙱𝙾𝚃 𝙻𝙸𝙽𝙺:*
-│ https://test-v2-3ovi.onrender.com
+│ https://momy-kidy-freebot.onrender.com
 │ 
 │ 📢 *𝙲𝙷𝙰𝙽𝙽𝙴𝙻:*
 │ https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02
