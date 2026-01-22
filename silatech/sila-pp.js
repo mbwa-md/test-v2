@@ -11,60 +11,84 @@ cmd({
     category: "owner",
     filename: __filename
 },
-async (conn, mek, m, { from, isCreator, reply }) => {
+async (conn, mek, m, { from, isCreator, reply, myquoted }) => {
     try {
         if (!isCreator)
-            return reply("*YEH COMMAND SIRF BOT OWNER KE LIYE HAI 😎*")
+            return reply("This command is only for bot owner")
 
-        // ✅ STRONG REPLY CHECK
-        if (!m.quoted || !m.quoted.message) {
-            return reply(
-                "*🥺 KISI PHOTO KO REPLY KARO*\n\n" +
-                "*Example:*\nReply image + `.pp`"
-            )
+        // Check if message is quoted
+        if (!myquoted || !m.quoted) {
+            return reply("Reply to an image with .pp\nExample: Reply to image + .pp")
         }
 
-        // 🔥 IMAGE DETECTION (ALL CASES)
+        // Get the quoted message
         let msg = m.quoted.message
 
-        if (msg.viewOnceMessageV2)
+        // Check for view-once messages
+        if (msg?.viewOnceMessageV2?.message) {
             msg = msg.viewOnceMessageV2.message
-        if (msg.viewOnceMessageV2Extension)
+        } else if (msg?.viewOnceMessageV2Extension?.message) {
             msg = msg.viewOnceMessageV2Extension.message
-
-        const type = Object.keys(msg)[0]
-        if (type !== "imageMessage") {
-            return reply("*❌ SIRF PHOTO PE `.pp` USE KARO 🥺*")
+        } else if (msg?.viewOnceMessage?.message) {
+            msg = msg.viewOnceMessage.message
         }
 
-        // 📂 tmp folder
+        // Check if it's an image
+        const messageType = Object.keys(msg)[0]
+        if (messageType !== "imageMessage") {
+            return reply("Only images can be used for profile picture")
+        }
+
+        await reply("Downloading image...")
+
+        // Download image
+        const imageBuffer = await m.quoted.download()
+        
+        if (!imageBuffer || imageBuffer.length === 0) {
+            return reply("Failed to download image")
+        }
+
+        // Create temp directory if it doesn't exist
         const tmpDir = "./tmp"
-        if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir)
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true })
+        }
 
-        // ⬇️ DOWNLOAD IMAGE
-        const stream = await downloadContentFromMessage(
-            msg.imageMessage,
-            "image"
-        )
+        // Save image temporarily
+        const tempFile = path.join(tmpDir, `profile_${Date.now()}.jpg`)
+        fs.writeFileSync(tempFile, imageBuffer)
 
-        let buffer = Buffer.from([])
-        for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk])
+        // Update bot profile picture
+        await reply("Updating profile picture...")
+        await conn.updateProfilePicture(conn.user.id, { url: tempFile })
 
-        const filePath = path.join(tmpDir, `botpp_${Date.now()}.jpg`)
-        fs.writeFileSync(filePath, buffer)
+        // Clean up temp file
+        fs.unlinkSync(tempFile)
 
-        // 🖼️ SET PROFILE PIC
-        await conn.updateProfilePicture(
-            conn.user.id,
-            fs.readFileSync(filePath)
-        )
+        // Send success message
+        await reply("✅ Bot profile picture updated successfully!")
+        await m.react("✅")
 
-        fs.unlinkSync(filePath)
-
-        reply("*✅ BOT KI PROFILE PHOTO CHANGE HO GAYI HAI 😍*")
-
-    } catch (e) {
-        console.log("SETPP ERROR:", e)
-        reply("*❌ PROFILE PHOTO CHANGE NAHI HO SAKI 🥺*")
+    } catch (error) {
+        console.error("PP command error:", error)
+        
+        // Clean up temp file if it exists
+        const tmpDir = "./tmp"
+        const files = fs.readdirSync(tmpDir).filter(f => f.startsWith('profile_'))
+        files.forEach(file => {
+            try {
+                fs.unlinkSync(path.join(tmpDir, file))
+            } catch (e) {}
+        })
+        
+        if (error.message.includes("rate-limited")) {
+            await reply("❌ Rate limited. Please try again later")
+        } else if (error.message.includes("not authorized")) {
+            await reply("❌ Bot is not authorized to change profile picture")
+        } else {
+            await reply("❌ Failed to update profile picture")
+        }
+        
+        await m.react("❌")
     }
 })
