@@ -1,5 +1,6 @@
 const { cmd } = require('../momy');
 const axios = require('axios');
+const yts = require('yt-search');
 
 cmd({
     pattern: "song",
@@ -17,99 +18,140 @@ cmd({
 
         await reply("*𝚂𝚎𝚊𝚛𝚌𝚑𝚒𝚗𝚐 𝚊𝚞𝚍𝚒𝚘...*");
 
-        // Try first API
-        try {
-            const apiUrl = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
-            const res = await axios.get(apiUrl);
-            const data = res.data;
-
-            if (data?.success && data?.result?.downloadUrl) {
-                const meta = data.result.metadata;
-                const dlUrl = data.result.downloadUrl;
-                
-                const caption = `╭━━【 🎵 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 】━━━╮
-│ 📛 𝚃𝚒𝚝𝚕𝚎: ${meta.title}
-│ 👤 𝙲𝚑𝚊𝚗𝚗𝚎𝚕: ${meta.channel}
-│ ⏱️ 𝙳𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${meta.duration}
-╰━━━━━━━━━━━━━━━━━━━╯
-
-> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-                
-                // Send thumbnail if available
-                if (meta.cover) {
-                    await conn.sendMessage(from, {
-                        image: { url: meta.cover },
-                        caption: caption
-                    }, { quoted: myquoted });
-                }
-                
-                // Send audio
-                await conn.sendMessage(from, {
-                    audio: { url: dlUrl },
-                    mimetype: "audio/mpeg",
-                    fileName: `${meta.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
-                }, { quoted: myquoted });
-                
-                await m.react("✅");
-                return;
+        // Search for the song/video
+        let video;
+        if (query.includes('youtube.com') || query.includes('youtu.be')) {
+            video = { url: query };
+        } else {
+            const search = await yts(query);
+            if (!search || !search.videos.length) {
+                return reply("*❌ 𝙽𝚘 𝚛𝚎𝚜𝚞𝚕𝚝𝚜 𝚏𝚘𝚞𝚗𝚍*");
             }
-        } catch (e) {
-            console.log("First API failed, trying second...");
+            video = search.videos[0];
         }
 
-        // Fallback API - using existing API from your code
-        try {
-            // Search YouTube first to get URL
-            const searchUrl = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
-            const searchRes = await axios.get(searchUrl);
-            
-            if (searchRes.data?.status && searchRes.data.result?.length > 0) {
-                const video = searchRes.data.result[0];
-                const ytUrl = video.url;
-                
-                // Download using second API
-                const api = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
-                const apiRes = await axios.get(api);
-
-                if (apiRes.data?.status && apiRes.data.result?.download) {
-                    const result = apiRes.data.result;
-                    const caption = `╭━━【 🎵 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 】━━━╮
-│ 📛 𝚃𝚒𝚝𝚕𝚎: ${result.title}
-│ ⏱️ 𝙳𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${result.duration}
-│ 👁️ 𝚅𝚒𝚎𝚠𝚜: ${result.views}
-│ 📅 𝚄𝚙𝚕𝚘𝚊𝚍𝚎𝚍: ${result.publish}
+        // Send video info
+        const caption = `╭━━【 🎵 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 】━━━╮
+│ 📛 𝚃𝚒𝚝𝚕𝚎: ${video.title}
+│ ⏱️ 𝙳𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${video.timestamp}
+│ 👁️ 𝚅𝚒𝚎𝚠𝚜: ${video.views}
 ╰━━━━━━━━━━━━━━━━━━━╯
 
-> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+*𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠...*`;
 
-                    // Send thumbnail
-                    await conn.sendMessage(from, {
-                        image: { url: result.thumbnail },
-                        caption: caption
-                    }, { quoted: myquoted });
-                    
-                    // Send audio
-                    await conn.sendMessage(from, {
-                        audio: { url: result.download },
-                        mimetype: "audio/mpeg",
-                        fileName: `${result.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
-                    }, { quoted: myquoted });
-                    
-                    await m.react("✅");
-                    return;
+        await conn.sendMessage(from, {
+            image: { url: video.thumbnail },
+            caption: caption
+        }, { quoted: myquoted });
+
+        // Try multiple APIs for downloading
+        let audioUrl = null;
+        let audioTitle = video.title;
+        let audioThumb = video.thumbnail;
+
+        // API 1: Yupra
+        try {
+            const apiUrl1 = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(video.url)}`;
+            const res1 = await axios.get(apiUrl1, {
+                timeout: 30000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
+            });
+
+            if (res1.data?.success && res1.data?.data?.download_url) {
+                audioUrl = res1.data.data.download_url;
+                audioTitle = res1.data.data.title || video.title;
+                audioThumb = res1.data.data.thumbnail || video.thumbnail;
+                console.log("Using Yupra API");
             }
         } catch (e) {
-            console.log("Second API failed");
+            console.log("Yupra API failed:", e.message);
         }
 
-        // If both APIs fail
-        reply("*❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝚊𝚞𝚍𝚒𝚘*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚕𝚊𝚝𝚎𝚛*");
-        await m.react("❌");
+        // API 2: Okatsu (fallback)
+        if (!audioUrl) {
+            try {
+                const apiUrl2 = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(video.url)}`;
+                const res2 = await axios.get(apiUrl2, {
+                    timeout: 30000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                });
+
+                if (res2.data?.dl) {
+                    audioUrl = res2.data.dl;
+                    audioTitle = res2.data.title || video.title;
+                    audioThumb = res2.data.thumb || video.thumbnail;
+                    console.log("Using Okatsu API");
+                }
+            } catch (e) {
+                console.log("Okatsu API failed:", e.message);
+            }
+        }
+
+        // API 3: Alternative API (backup)
+        if (!audioUrl) {
+            try {
+                const apiUrl3 = `https://youtube-mp3-download1.p.rapidapi.com/dl?id=${video.url.split('v=')[1] || video.url}`;
+                const res3 = await axios.get(apiUrl3, {
+                    timeout: 30000,
+                    headers: {
+                        'X-RapidAPI-Key': 'your-api-key-here', // Add your API key if available
+                        'X-RapidAPI-Host': 'youtube-mp3-download1.p.rapidapi.com'
+                    }
+                });
+
+                if (res3.data?.link) {
+                    audioUrl = res3.data.link;
+                    console.log("Using RapidAPI");
+                }
+            } catch (e) {
+                console.log("RapidAPI failed:", e.message);
+            }
+        }
+
+        if (!audioUrl) {
+            throw new Error("All APIs failed");
+        }
+
+        // Download the audio
+        const audioResponse = await axios.get(audioUrl, {
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        const audioBuffer = Buffer.from(audioResponse.data);
+
+        // Send the audio
+        await conn.sendMessage(from, {
+            audio: audioBuffer,
+            mimetype: "audio/mpeg",
+            fileName: `${audioTitle.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
+        }, { quoted: myquoted });
+
+        // Send success message
+        await conn.sendMessage(from, {
+            text: `✅ *${audioTitle}* has been downloaded successfully!\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
+        }, { quoted: myquoted });
+
+        await m.react("✅");
 
     } catch (error) {
         console.error("Song error:", error);
-        reply("*❌ 𝙴𝚛𝚛𝚘𝚛 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍𝚒𝚗𝚐 𝚊𝚞𝚍𝚒𝚘*");
+        
+        if (error.message.includes("All APIs failed")) {
+            await reply("*❌ 𝙰𝚕𝚕 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝚊𝚙𝚒𝚜 𝚏𝚊𝚒𝚕𝚎𝚍*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚕𝚊𝚝𝚎𝚛 𝚘𝚛 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚊𝚍𝚖𝚒𝚗*");
+        } else if (error.message.includes("timeout")) {
+            await reply("*❌ 𝚁𝚎𝚚𝚞𝚎𝚜𝚝 𝚝𝚒𝚖𝚎𝚍 𝚘𝚞𝚝*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚕𝚊𝚝𝚎𝚛*");
+        } else {
+            await reply("*❌ 𝙴𝚛𝚛𝚘𝚛 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍𝚒𝚗𝚐 𝚊𝚞𝚍𝚒𝚘*\n*𝙲𝚑𝚎𝚌𝚔 𝚢𝚘𝚞𝚛 𝚒𝚗𝚝𝚎𝚛𝚗𝚎𝚝 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗*");
+        }
+        
         await m.react("❌");
     }
 });
