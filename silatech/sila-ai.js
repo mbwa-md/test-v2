@@ -10,31 +10,24 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, args, myquoted }) => {
     try {
-        const text = mek.message?.conversation || mek.message?.extendedTextMessage?.text || args.join(" ");
+        const text = args.join(" ");
         
-        if (!text || text.replace(/^\.(openai|chatgpt|gpt3|open-gpt)\s+/i, "").trim().length === 0) {
-            return reply("*🧠 𝙾𝙿𝙴𝙽𝙰𝙸 𝙲𝙷𝙰𝚃𝙱𝙾𝚃*\n\n*𝚄𝚂𝙰𝙶𝙴:* .openai your_message\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴:* .openai Hello, how are you?\n\n*𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡*");
+        if (!text) {
+            return reply("OpenAI Chatbot\n\nUsage: .openai your message\nExample: .openai Hello, how are you?\n\nPowered By Sila Tech");
         }
 
-        const question = text.replace(/^\.(openai|chatgpt|gpt3|open-gpt)\s+/i, "").trim();
-        await reply("*🧠 𝙰𝚜𝚔𝚒𝚗𝚐 𝙾𝚙𝚎𝚗𝙰𝙸...*");
+        await reply("Asking OpenAI...");
 
-        const apiUrl = `https://vapis.my.id/api/openai?q=${encodeURIComponent(question)}`;
+        const apiUrl = `https://vapis.my.id/api/openai?q=${encodeURIComponent(text)}`;
         const { data } = await axios.get(apiUrl);
 
         if (!data || !data.result) {
             await m.react("❌");
-            return reply("*❌ 𝙾𝚙𝚎𝚗𝙰𝙸 𝚏𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚛𝚎𝚜𝚙𝚘𝚗𝚍*");
+            return reply("OpenAI failed to respond");
         }
 
-        const response = `
-│ ${data.result}
-╰━━━━━━━━━━━━━━━━━━━╯
-
-> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-
         await conn.sendMessage(from, {
-            text: response
+            text: data.result + "\n\nPowered By Sila Tech"
         }, { quoted: myquoted });
 
         await m.react("✅");
@@ -42,12 +35,12 @@ cmd({
     } catch (e) {
         console.error("Error in OpenAI command:", e);
         await m.react("❌");
-        reply("*❌ 𝙰𝚗 𝚎𝚛𝚛𝚘𝚛 𝚘𝚌𝚌𝚞𝚛𝚛𝚎𝚍 𝚠𝚒𝚝𝚑 𝙾𝚙𝚎𝚗𝙰𝙸*");
+        reply("An error occurred with OpenAI");
     }
 });
 
 cmd({
-    pattern: "ai",
+    pattern: "silaai",
     alias: ["bot", "dj", "gpt", "gpt4", "bing"],
     desc: "Chat with AI model",
     category: "ai",
@@ -55,31 +48,24 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, args, myquoted }) => {
     try {
-        const text = mek.message?.conversation || mek.message?.extendedTextMessage?.text || args.join(" ");
+        const text = args.join(" ");
         
-        if (!text || text.replace(/^\.(ai|bot|dj|gpt|gpt4|bing)\s+/i, "").trim().length === 0) {
-            return reply("*🤖 𝙰𝙸 𝙲𝙷𝙰𝚃𝙱𝙾𝚃*\n\n*𝚄𝚂𝙰𝙶𝙴:* .ai your_message\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴:* .ai What is artificial intelligence?\n\n*𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡*");
+        if (!text) {
+            return reply("AI Chatbot\n\nUsage: .ai your message\nExample: .ai What is artificial intelligence?\n\nPowered By Sila Tech");
         }
 
-        const question = text.replace(/^\.(ai|bot|dj|gpt|gpt4|bing)\s+/i, "").trim();
-        await reply("*🤖 𝙰𝚜𝚔𝚒𝚗𝚐 𝙰𝙸...*");
+        await reply("Asking AI...");
 
-        const apiUrl = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(question)}`;
+        const apiUrl = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(text)}`;
         const { data } = await axios.get(apiUrl);
 
         if (!data || !data.message) {
             await m.react("❌");
-            return reply("*❌ 𝙰𝙸 𝚏𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚛𝚎𝚜𝚙𝚘𝚗𝚍*");
+            return reply("AI failed to respond");
         }
 
-        const response =`
-│ ${data.message}
-╰━━━━━━━━━━━━━━━━━━━╯
-
-> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-
         await conn.sendMessage(from, {
-            text: response
+            text: data.message + "\n\nPowered By Sila Tech"
         }, { quoted: myquoted });
 
         await m.react("✅");
@@ -87,7 +73,7 @@ cmd({
     } catch (e) {
         console.error("Error in AI command:", e);
         await m.react("❌");
-        reply("*❌ 𝙰𝚗 𝚎𝚛𝚛𝚘𝚛 𝚘𝚌𝚌𝚞𝚛𝚛𝚎𝚍 𝚠𝚒𝚝𝚑 𝙰𝙸*");
+        reply("An error occurred with AI");
     }
 });
 
@@ -100,31 +86,24 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, args, myquoted }) => {
     try {
-        const text = mek.message?.conversation || mek.message?.extendedTextMessage?.text || args.join(" ");
+        const text = args.join(" ");
         
-        if (!text || text.replace(/^\.(deepseek|deep|seekai)\s+/i, "").trim().length === 0) {
-            return reply("*👾 𝙳𝙴𝙴𝙿𝚂𝙴𝙴𝙺 𝙰𝙸*\n\n*𝚄𝚂𝙰𝙶𝙴:* .deepseek your_message\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴:* .deepseek Explain quantum physics\n\n*𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡*");
+        if (!text) {
+            return reply("DeepSeek AI\n\nUsage: .deepseek your message\nExample: .deepseek Explain quantum physics\n\nPowered By Sila Tech");
         }
 
-        const question = text.replace(/^\.(deepseek|deep|seekai)\s+/i, "").trim();
-        await reply("*👾 𝙰𝚜𝚔𝚒𝚗𝚐 𝙳𝚎𝚎𝚙𝚂𝚎𝚎𝚔...*");
+        await reply("Asking DeepSeek...");
 
-        const apiUrl = `https://api.ryzendesu.vip/api/ai/deepseek?text=${encodeURIComponent(question)}`;
+        const apiUrl = `https://api.ryzendesu.vip/api/ai/deepseek?text=${encodeURIComponent(text)}`;
         const { data } = await axios.get(apiUrl);
 
         if (!data || !data.answer) {
             await m.react("❌");
-            return reply("*❌ 𝙳𝚎𝚎𝚙𝚂𝚎𝚎𝚔 𝙰𝙸 𝚏𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚛𝚎𝚜𝚙𝚘𝚗𝚍*");
+            return reply("DeepSeek AI failed to respond");
         }
 
-        const response = `
-│ ${data.answer}
-╰━━━━━━━━━━━━━━━━━━━╯
-
-> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-
         await conn.sendMessage(from, {
-            text: response
+            text: data.answer + "\n\nPowered By Sila Tech"
         }, { quoted: myquoted });
 
         await m.react("✅");
@@ -132,6 +111,142 @@ cmd({
     } catch (e) {
         console.error("Error in DeepSeek AI command:", e);
         await m.react("❌");
-        reply("*❌ 𝙰𝚗 𝚎𝚛𝚛𝚘𝚛 𝚘𝚌𝚌𝚞𝚛𝚛𝚎𝚍 𝚠𝚒𝚝𝚑 𝙳𝚎𝚎𝚙𝚂𝚎𝚎𝚔*");
+        reply("An error occurred with DeepSeek");
+    }
+});
+
+// GPT-5 Command
+cmd({
+    pattern: "ai",
+    alias: ["gpt5", "gpt5plus"],
+    desc: "Chat with SILA AI",
+    category: "ai",
+    react: "🚀",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, args, myquoted }) => {
+    try {
+        const text = args.join(" ");
+        
+        if (!text) {
+            return reply("GPT-5 AI\n\nUsage: .gpt5 your message\nExample: .gpt5 Write me a poem about nature\n\nPowered By Sila Tech");
+        }
+
+        await reply("Asking GPT-5...");
+
+        const apiUrl = `https://api.yupra.my.id/api/ai/gpt5?q=${encodeURIComponent(text)}`;
+        const { data } = await axios.get(apiUrl);
+
+        if (!data || !data.response) {
+            await m.react("❌");
+            return reply("GPT-5 failed to respond");
+        }
+
+        await conn.sendMessage(from, {
+            text: data.response + "\n\nPowered By Sila Tech"
+        }, { quoted: myquoted });
+
+        await m.react("✅");
+
+    } catch (e) {
+        console.error("Error in GPT-5 command:", e);
+        await m.react("❌");
+        reply("An error occurred with GPT-5");
+    }
+});
+
+// Copilot Command
+cmd({
+    pattern: "copilot",
+    alias: ["copilotthink", "copilotai", "microsoftai"],
+    desc: "Chat with Microsoft Copilot AI",
+    category: "ai",
+    react: "💻",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, args, myquoted }) => {
+    try {
+        const text = args.join(" ");
+        
+        if (!text) {
+            return reply("Microsoft Copilot AI\n\nUsage: .copilot your message\nExample: .copilot Help me write code in JavaScript\n\nPowered By Sila Tech");
+        }
+
+        await reply("Asking Copilot...");
+
+        const apiUrl = `https://api.yupra.my.id/api/ai/copilot-think?q=${encodeURIComponent(text)}`;
+        const { data } = await axios.get(apiUrl);
+
+        if (!data || !data.response) {
+            await m.react("❌");
+            return reply("Copilot failed to respond");
+        }
+
+        await conn.sendMessage(from, {
+            text: data.response + "\n\nPowered By Sila Tech"
+        }, { quoted: myquoted });
+
+        await m.react("✅");
+
+    } catch (e) {
+        console.error("Error in Copilot command:", e);
+        await m.react("❌");
+        reply("An error occurred with Copilot");
+    }
+});
+
+// Advanced AI Command
+cmd({
+    pattern: "advai",
+    alias: ["advancedai", "smartai", "superai"],
+    desc: "Advanced AI with multiple model fallback",
+    category: "ai",
+    react: "⚡",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, args, myquoted }) => {
+    try {
+        const text = args.join(" ");
+        
+        if (!text) {
+            return reply("Advanced AI\n\nUsage: .advai your message\nExample: .advai Solve this math problem\n\nPowered By Sila Tech");
+        }
+
+        await reply("Processing with advanced AI...");
+
+        let response = null;
+        
+        // Try multiple APIs in sequence
+        const apis = [
+            { url: `https://api.yupra.my.id/api/ai/gpt5?q=${encodeURIComponent(text)}`, key: 'response' },
+            { url: `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(text)}`, key: 'message' },
+            { url: `https://vapis.my.id/api/openai?q=${encodeURIComponent(text)}`, key: 'result' },
+            { url: `https://api.yupra.my.id/api/ai/copilot-think?q=${encodeURIComponent(text)}`, key: 'response' }
+        ];
+
+        for (let api of apis) {
+            try {
+                const { data } = await axios.get(api.url);
+                if (data && data[api.key]) {
+                    response = data[api.key];
+                    break;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+
+        if (!response) {
+            await m.react("❌");
+            return reply("All AI services failed to respond");
+        }
+
+        await conn.sendMessage(from, {
+            text: response + "\n\nPowered By Sila Tech"
+        }, { quoted: myquoted });
+
+        await m.react("✅");
+
+    } catch (e) {
+        console.error("Error in Advanced AI command:", e);
+        await m.react("❌");
+        reply("An error occurred with Advanced AI");
     }
 });
