@@ -34,11 +34,9 @@ const {
 } = require('./lib/database');
 const { handleAntidelete } = require('./lib/antidelete');
 const { handleAntilink } = require('./lib/antilink');
-const { chatbotHandler } = require('./path/to/chatbot.js');
 
 const express = require('express');
 const fs = require('fs-extra');
-const path = require('path');
 const pino = require('pino');
 const crypto = require('crypto');
 const FileType = require('file-type');
@@ -49,6 +47,12 @@ const moment = require('moment-timezone');
 const prefix = config.PREFIX;
 const mode = config.MODE;
 const router = express.Router();
+
+// Remove duplicate path declaration
+// const path = require('path'); // REMOVED - Already imported in index.js
+
+// Use path from global scope
+const path = require('path');
 
 // ==============================================================================
 // 1. INITIALIZATION & DATABASE
@@ -1260,8 +1264,6 @@ setTimeout(() => {
 // ==============================================================================
 
 const { Telegraf, Markup } = require('telegraf');
-const path = require('path');
-const fs = require('fs-extra');
 
 // Create silatelegram directory
 const silatelegramDir = path.join(__dirname, 'silatelegram');
