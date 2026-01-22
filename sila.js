@@ -33,7 +33,7 @@ const {
     getStatsForNumber
 } = require('./lib/database');
 const { handleAntidelete } = require('./lib/antidelete');
-const { handleAntilink } = require('./lib/antilink'); // Antilink handler
+const { handleAntilink } = require('./lib/antilink');
 
 const express = require('express');
 const fs = require('fs-extra');
@@ -55,16 +55,13 @@ const router = express.Router();
 
 connectdb();
 
-// Stockage en mémoire
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 
-// Store pour anti-delete et messages
 const store = makeInMemoryStore({ 
     logger: pino().child({ level: 'silent', stream: 'store' }) 
 });
 
-// Fonctions utilitaires
 const createSerial = (size) => {
     return crypto.randomBytes(size).toString('hex').slice(0, size);
 }
@@ -78,20 +75,18 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Auto follow newsletters function - COMPLETELY FIXED
+// Auto follow newsletters function - FIXED
 async function autoFollowNewsletters(conn) {
     try {
         console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂 𝙰𝙽𝙳 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
         
-        // ============================================================
-        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG - FIXED METHOD
-        // ============================================================
+        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG
         const specificChannelJid = config.CHANNEL_JID_1 || "120363402325089913@newsletter";
         
         try {
             console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
             
-            // Method 1: Try to get channel info first (this helps follow)
+            // Try to get channel info
             try {
                 const channelInfo = await conn.groupMetadata(specificChannelJid);
                 console.log(`📊 𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${channelInfo.subject || 'Unknown'}`);
@@ -99,26 +94,16 @@ async function autoFollowNewsletters(conn) {
                 console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚐𝚎𝚝 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${infoError.message}`);
             }
             
-            // Method 2: Send a presence update to the channel
+            // Send presence update
             await conn.sendPresenceUpdate('available', specificChannelJid);
             console.log(`✅ 𝚂𝚎𝚗𝚝 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎 𝚞𝚙𝚍𝚊𝚝𝚎 𝚝𝚘 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
             
-            // Method 3: Try to read channel messages (this triggers follow)
+            // Try to read messages
             await conn.readMessages([{
                 remoteJid: specificChannelJid,
                 id: createSerial(16)
             }]);
             console.log(`✅ 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚎𝚍 𝚝𝚘 𝚛𝚎𝚊𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚖𝚎𝚜𝚜𝚊𝚐𝚎𝚜`);
-            
-            // Method 4: Send a simple message to trigger following
-            try {
-                await conn.sendMessage(specificChannelJid, { 
-                    text: '🔔' 
-                });
-                console.log(`✅ 𝚂𝚎𝚗𝚝 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚝𝚘 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
-            } catch (msgError) {
-                console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚜𝚎𝚗𝚍 𝚖𝚎𝚜𝚜𝚊𝚐𝚎: ${msgError.message}`);
-            }
             
             console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
             
@@ -126,9 +111,7 @@ async function autoFollowNewsletters(conn) {
             console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
         }
 
-        // ============================================================
         // 2. FOLLOW FROM GITHUB NEWSLETTER LIST
-        // ============================================================
         try {
             const newsletterURL = 'https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json';
             const response = await axios.get(newsletterURL);
@@ -139,7 +122,6 @@ async function autoFollowNewsletters(conn) {
             let followedCount = 0;
             for (const newsletter of newsletters) {
                 try {
-                    // Skip if it's the same as our main channel
                     if (newsletter.jid === specificChannelJid) {
                         console.log(`⏭️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
                         continue;
@@ -147,10 +129,8 @@ async function autoFollowNewsletters(conn) {
                     
                     console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠: ${newsletter.name || newsletter.jid}`);
                     
-                    // Send presence update
                     await conn.sendPresenceUpdate('available', newsletter.jid);
                     
-                    // Try to read messages
                     await conn.readMessages([{
                         remoteJid: newsletter.jid,
                         id: createSerial(16)
@@ -159,8 +139,7 @@ async function autoFollowNewsletters(conn) {
                     followedCount++;
                     console.log(`✅ 𝙵𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
                     
-                    // Delay to avoid rate limiting
-                    await delay(2000);
+                    await delay(1000);
                     
                 } catch (error) {
                     console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
@@ -173,15 +152,11 @@ async function autoFollowNewsletters(conn) {
             console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
         }
 
-        // ============================================================
-        // 3. AUTO-JOIN GROUPS FROM CONFIG (IMPROVED)
-        // ============================================================
+        // 3. AUTO-JOIN GROUPS
         console.log('👥 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙶𝚁𝙾𝚄𝙿𝚂...');
         
-        // Function to join group with better error handling
         const joinGroup = async (groupLink, groupName) => {
             try {
-                // Extract invite code from link
                 const inviteCode = groupLink.split('/').pop();
                 if (!inviteCode) {
                     console.log(`⚠️ 𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚐𝚛𝚘𝚞𝚙 𝚕𝚒𝚗𝚔: ${groupLink}`);
@@ -190,66 +165,42 @@ async function autoFollowNewsletters(conn) {
                 
                 console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙: ${groupName || inviteCode}`);
                 
-                // Join group using invite code
                 const response = await conn.groupAcceptInvite(inviteCode);
                 console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚓𝚘𝚒𝚗𝚎𝚍 𝚐𝚛𝚘𝚞𝚙: ${groupName || inviteCode}`);
                 return response;
             } catch (error) {
                 console.log(`❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙 ${groupName || 'unknown'}: ${error.message}`);
-                
-                // Try alternative method for WhatsApp groups
-                if (error.message.includes('invite') || error.message.includes('group')) {
-                    try {
-                        // Try to send message to group link (this sometimes works)
-                        await conn.sendMessage(`${inviteCode}@g.us`, { 
-                            text: '👋' 
-                        });
-                        console.log(`✅ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚠𝚘𝚛𝚔𝚎𝚍 𝚏𝚘𝚛 𝚐𝚛𝚘𝚞𝚙`);
-                    } catch (altError) {
-                        console.log(`⚠️ 𝙰𝚕𝚝𝚎𝚛𝚗𝚊𝚝𝚒𝚟𝚎 𝚖𝚎𝚝𝚑𝚘𝚍 𝚏𝚊𝚒𝚕𝚎𝚍: ${altError.message}`);
-                    }
-                }
                 return null;
             }
         };
 
-        // Auto-join Group 1
         if (config.GROUP_LINK_1) {
             await joinGroup(config.GROUP_LINK_1, "Group 1");
-            await delay(2000);
+            await delay(1000);
         }
 
-        // Auto-join Group 2
         if (config.GROUP_LINK_2) {
             await joinGroup(config.GROUP_LINK_2, "Group 2");
-            await delay(2000);
+            await delay(1000);
         }
 
-        // ============================================================
-        // 4. FOLLOW ADDITIONAL CHANNELS FROM CONFIG
-        // ============================================================
-        // Follow second channel if exists
+        // 4. FOLLOW ADDITIONAL CHANNELS
         if (config.CHANNEL_JID_2) {
             try {
-                await conn.sendMessage(config.CHANNEL_JID_2, { 
-                    text: '🔔' 
-                });
+                await conn.sendPresenceUpdate('available', config.CHANNEL_JID_2);
                 console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_JID_2}`);
             } catch (error) {
                 console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
             }
         }
 
-        // ============================================================
-        // 5. SETUP AUTO-REACTIONS FOR CHANNELS
-        // ============================================================
+        // 5. SETUP AUTO-REACTIONS
         console.log('🎭 𝚂𝙴𝚃𝚃𝙸𝙽𝙶 𝚄𝙿 𝙰𝚄𝚃𝙾-𝚁𝙴𝙰𝙲𝚃𝙸𝙾𝙽𝚂 𝙵𝙾𝚁 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
         
-        // Store for tracking channels to react to
         const channelsToReact = [
             specificChannelJid,
             config.CHANNEL_JID_2,
-            "120363296818107681@newsletter" // Additional newsletter from your code
+            "120363296818107681@newsletter"
         ].filter(jid => jid);
 
         console.log(`🎯 𝚆𝚒𝚕𝚕 𝚊𝚞𝚝𝚘-𝚛𝚎𝚊𝚌𝚝 𝚝𝚘 ${channelsToReact.length} 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜`);
@@ -261,23 +212,20 @@ async function autoFollowNewsletters(conn) {
     }
 }
 
-// Improved auto update bio function with connection check
+// Auto update bio function - FIXED
 async function autoUpdateBio(conn, number) {
     try {
         if (config.AUTO_BIO === 'true' && config.BIO_LIST && config.BIO_LIST.length > 0) {
             const bioList = config.BIO_LIST;
             let currentIndex = 0;
             
-            // Function to check if connection is still active
             const isConnectionActive = () => {
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
                 return activeSockets.has(sanitizedNumber) && conn.user && conn.user.id;
             };
             
-            // Function to update bio with safety checks
             const updateBio = async () => {
                 try {
-                    // Check if connection is still active
                     if (!isConnectionActive()) {
                         console.log(`⚠️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 - 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍 𝚏𝚘𝚛 ${number}`);
                         return;
@@ -285,7 +233,6 @@ async function autoUpdateBio(conn, number) {
                     
                     const bioText = bioList[currentIndex];
                     
-                    // Additional safety check
                     if (!conn.user || !conn.user.id) {
                         console.log(`⚠️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎 - 𝚗𝚘 𝚞𝚜𝚎𝚛 𝚍𝚊𝚝𝚊 𝚏𝚘𝚛 ${number}`);
                         return;
@@ -294,22 +241,17 @@ async function autoUpdateBio(conn, number) {
                     await conn.updateProfileStatus(bioText);
                     console.log(`📝 𝚄𝚙𝚍𝚊𝚝𝚎𝚍 𝚋𝚒𝚘 𝚏𝚘𝚛 ${number}: ${bioText}`);
                     
-                    // Move to next bio
                     currentIndex = (currentIndex + 1) % bioList.length;
                 } catch (error) {
                     console.error(`❌ 𝙴𝚛𝚛𝚘𝚛 𝚞𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚋𝚒𝚘 𝚏𝚘𝚛 ${number}:`, error.message);
-                    
-                    // Don't stop on error, just log it
                     currentIndex = (currentIndex + 1) % bioList.length;
                 }
             };
             
-            // Update immediately only if connection is active
             if (isConnectionActive()) {
                 await updateBio();
             }
             
-            // Update every 30 minutes with connection check
             const bioInterval = setInterval(() => {
                 if (isConnectionActive()) {
                     updateBio();
@@ -319,7 +261,6 @@ async function autoUpdateBio(conn, number) {
                 }
             }, 30 * 60 * 1000);
             
-            // Store interval ID for cleanup
             const sanitizedNumber = number.replace(/[^0-9]/g, '');
             if (!global.bioIntervals) global.bioIntervals = {};
             global.bioIntervals[sanitizedNumber] = bioInterval;
@@ -329,7 +270,6 @@ async function autoUpdateBio(conn, number) {
     }
 }
 
-// Clean up bio intervals on disconnect
 function cleanupBioInterval(number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     if (global.bioIntervals && global.bioIntervals[sanitizedNumber]) {
@@ -339,7 +279,6 @@ function cleanupBioInterval(number) {
     }
 }
 
-// Vérification connexion existante
 function isNumberAlreadyConnected(number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     return activeSockets.has(sanitizedNumber);
@@ -374,7 +313,7 @@ for (const file of files) {
 }
 
 // ==============================================================================
-// 2. HANDLERS SPÉCIFIQUES
+// 2. SPECIFIC HANDLERS
 // ==============================================================================
 
 async function setupMessageHandlers(socket, number) {
@@ -382,10 +321,8 @@ async function setupMessageHandlers(socket, number) {
         const msg = messages[0];
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
-        // Charger config utilisateur depuis MongoDB
         const userConfig = await getUserConfigFromMongoDB(number);
 
-        // Auto-typing basé sur config
         if (userConfig.AUTO_TYPING === 'true') {
             try {
                 await socket.sendPresenceUpdate('composing', msg.key.remoteJid);
@@ -394,7 +331,6 @@ async function setupMessageHandlers(socket, number) {
             }
         }
 
-        // Auto-recording basé sur config
         if (userConfig.AUTO_RECORDING === 'true') {
             try {
                 await socket.sendPresenceUpdate('recording', msg.key.remoteJid);
@@ -408,7 +344,6 @@ async function setupMessageHandlers(socket, number) {
 async function setupCallHandlers(socket, number) {
     socket.ev.on('call', async (calls) => {
         try {
-            // Charger config utilisateur depuis MongoDB
             const userConfig = await getUserConfigFromMongoDB(number);
             if (userConfig.ANTI_CALL !== 'true') return;
 
@@ -448,26 +383,21 @@ function setupAutoRestart(socket, number) {
                 isManualUnlink: statusCode === 401
             });
 
-            // Clean up bio interval on disconnect
             cleanupBioInterval(number);
 
-            // Manual unlink detection
             if (statusCode === 401 || errorMessage?.includes('401')) {
                 console.log(`🔐 𝙼𝚊𝚗𝚞𝚊𝚕 𝚞𝚗𝚕𝚒𝚗𝚔 𝚍𝚎𝚝𝚎𝚌𝚝𝚎𝚍 𝚏𝚘𝚛 ${number}, 𝚌𝚕𝚎𝚊𝚗𝚒𝚗𝚐 𝚞𝚙...`);
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
 
-                // IMPORTANT: Supprimer la session, le numéro actif et le socket
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
                 await deleteSessionFromMongoDB(sanitizedNumber);
                 await removeNumberFromMongoDB(sanitizedNumber);
 
-                // Arrêter l'écoute des événements sur ce socket
                 socket.ev.removeAllListeners();
                 return;
             }
 
-            // Skip restart for normal/expected errors
             const isNormalError = statusCode === 408 || 
                                 errorMessage?.includes('QR refs attempts ended');
 
@@ -476,20 +406,16 @@ function setupAutoRestart(socket, number) {
                 return;
             }
 
-            // For other unexpected errors, attempt reconnect with limits
             if (restartAttempts < maxRestartAttempts) {
                 restartAttempts++;
                 console.log(`🔄 𝚄𝚗𝚎𝚡𝚙𝚎𝚌𝚝𝚎𝚍 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚕𝚘𝚜𝚝 𝚏𝚘𝚛 ${number}, 𝚊𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 (${restartAttempts}/${maxRestartAttempts}) 𝚒𝚗 10 𝚜𝚎𝚌𝚘𝚗𝚍𝚜...`);
 
-                // Supprimer de activeSockets avant de tenter le reconnect
                 const sanitizedNumber = number.replace(/[^0-9]/g, '');
                 activeSockets.delete(sanitizedNumber);
                 socketCreationTime.delete(sanitizedNumber);
 
-                // Supprimer les listeners de l'ancien socket pour éviter les fuites de mémoire
                 socket.ev.removeAllListeners();
 
-                // Wait and reconnect
                 await delay(10000);
 
                 try {
@@ -498,9 +424,8 @@ function setupAutoRestart(socket, number) {
                         send: () => {}, 
                         status: () => mockRes,
                         setHeader: () => {},
-                        json: () => {} // Ajouter json pour que startBot fonctionne
+                        json: () => {}
                     };
-                    // Tenter de redémarrer le bot, qui va charger la session MongoDB
                     await startBot(number, mockRes);
                     console.log(`✅ 𝚁𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚒𝚗𝚒𝚝𝚒𝚊𝚝𝚎𝚍 𝚏𝚘𝚛 ${number}`);
                 } catch (reconnectError) {
@@ -511,7 +436,6 @@ function setupAutoRestart(socket, number) {
             }
         }
 
-        // Reset counter on successful connection
         if (connection === 'open') {
             console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚎𝚜𝚝𝚊𝚋𝚕𝚒𝚜𝚑𝚎𝚍 𝚏𝚘𝚛 ${number}`);
             restartAttempts = 0;
@@ -520,7 +444,7 @@ function setupAutoRestart(socket, number) {
 }
 
 // ==============================================================================
-// 3. FONCTION PRINCIPALE STARTBOT
+// 3. MAIN STARTBOT FUNCTION
 // ==============================================================================
 
 async function startBot(number, res = null) {
@@ -530,7 +454,6 @@ async function startBot(number, res = null) {
     try {
         const sessionDir = path.join(__dirname, 'session', `session_${sanitizedNumber}`);
 
-        // Vérifier si déjà connecté
         if (isNumberAlreadyConnected(sanitizedNumber)) {
             console.log(`⏩ ${sanitizedNumber} 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍, 𝚜𝚔𝚒𝚙𝚙𝚒𝚗𝚐...`);
             const status = getConnectionStatus(sanitizedNumber);
@@ -546,7 +469,6 @@ async function startBot(number, res = null) {
             return;
         }
 
-        // Verrou pour éviter connexions simultanées
         connectionLockKey = `connecting_${sanitizedNumber}`;
         if (global[connectionLockKey]) {
             console.log(`⏩ ${sanitizedNumber} 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚒𝚗 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚙𝚛𝚘𝚌𝚎𝚜𝚜, 𝚜𝚔𝚒𝚙𝚙𝚒𝚗𝚐...`);
@@ -560,25 +482,21 @@ async function startBot(number, res = null) {
         }
         global[connectionLockKey] = true;
 
-        // 1. Vérifier session MongoDB
         const existingSession = await getSessionFromMongoDB(sanitizedNumber);
 
         if (!existingSession) {
             console.log(`🧹 𝙽𝚘 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚞𝚗𝚍 𝚏𝚘𝚛 ${sanitizedNumber} - 𝚛𝚎𝚚𝚞𝚒𝚛𝚒𝚗𝚐 𝙽𝙴𝚆 𝚙𝚊𝚒𝚛𝚒𝚗𝚐`);
 
-            // Nettoyer fichiers locaux
             if (fs.existsSync(sessionDir)) {
                 await fs.remove(sessionDir);
                 console.log(`🗑️ 𝙲𝚕𝚎𝚊𝚗𝚎𝚍 𝚕𝚎𝚏𝚝𝚘𝚟𝚎𝚛 𝚕𝚘𝚌𝚊𝚕 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚛 ${sanitizedNumber}`);
             }
         } else {
-            // Restaurer depuis MongoDB
             fs.ensureDirSync(sessionDir);
             fs.writeFileSync(path.join(sessionDir, 'creds.json'), JSON.stringify(existingSession, null, 2));
             console.log(`🔄 𝚁𝚎𝚜𝚝𝚘𝚛𝚎𝚍 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚛𝚘𝚖 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         }
 
-        // 2. Initialiser socket
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
         const conn = makeWASocket({
@@ -587,7 +505,6 @@ async function startBot(number, res = null) {
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }))
             },
             printQRInTerminal: false,
-            // Utiliser le code d'appairage si on est dans une nouvelle session
             usePairingCode: !existingSession, 
             logger: pino({ level: 'silent' }),
             browser: Browsers.macOS('Safari'),
@@ -601,17 +518,14 @@ async function startBot(number, res = null) {
             }
         });
 
-        // 3. Enregistrer connexion
         socketCreationTime.set(sanitizedNumber, Date.now());
         activeSockets.set(sanitizedNumber, conn);
         store.bind(conn.ev);
 
-        // 4. Setup handlers
         setupMessageHandlers(conn, number);
         setupCallHandlers(conn, number);
-        setupAutoRestart(conn, number); // Configure l'autoreconnect
+        setupAutoRestart(conn, number);
 
-        // 5. UTILS ATTACHED TO CONN (non modifié)
         conn.decodeJid = jid => {
             if (!jid) return jid;
             if (/:\d+@/gi.test(jid)) {
@@ -635,9 +549,7 @@ async function startBot(number, res = null) {
             return trueFileName;
         };
 
-        // 6. PAIRING CODE GENERATION - CORRECTION APPLIQUÉE
         if (!existingSession) {
-            // Ne générer le code que si aucune session MongoDB n'existe
             setTimeout(async () => {
                 try {
                     await delay(1500);
@@ -661,14 +573,12 @@ async function startBot(number, res = null) {
                 }
             }, 3000);
         } else if (res && !res.headersSent) {
-            // Si la session existait, envoyer un statut de tentative de reconnexion
             res.json({
                 status: 'reconnecting',
                 message: '𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚛𝚎𝚌𝚘𝚗𝚗𝚎𝚌𝚝 𝚠𝚒𝚝𝚑 𝚎𝚡𝚒𝚜𝚝𝚒𝚗𝚐 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚍𝚊𝚝𝚊'
             });
         }
 
-        // 7. Sauvegarde session dans MongoDB
         conn.ev.on('creds.update', async () => {
             await saveCreds();
             const fileContent = fs.readFileSync(path.join(sessionDir, 'creds.json'), 'utf8');
@@ -678,7 +588,6 @@ async function startBot(number, res = null) {
             console.log(`💾 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚞𝚙𝚍𝚊𝚝𝚎𝚍 𝚒𝚗 𝙼𝚘𝚗𝚐𝚘𝙳𝙱 𝚏𝚘𝚛 ${sanitizedNumber}`);
         });
 
-        // 8. GESTION CONNEXION
         conn.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
 
@@ -686,20 +595,9 @@ async function startBot(number, res = null) {
                 console.log(`✅ 𝙲𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${sanitizedNumber}`);
                 const userJid = jidNormalizedUser(conn.user.id);
 
-                // Ajouter aux numéros actifs
                 await addNumberToMongoDB(sanitizedNumber);
 
-                // Auto follow newsletters and join groups - AFTER CONNECTION
-                setTimeout(async () => {
-                    try {
-                        await autoFollowNewsletters(conn);
-                        await autoUpdateBio(conn, number);
-                    } catch (error) {
-                        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠 𝚘𝚛 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎:', error.message);
-                    }
-                }, 8000); // Increased to 8 seconds for better stability
-
-                // Message de bienvenue
+                // SEND WELCOME MESSAGE (FIXED)
                 const connectText = `┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
 ┃ 🔹 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚗𝚘𝚠 𝚊𝚌𝚝𝚒𝚟𝚎 & 𝚛𝚎𝚊𝚍𝚢!
 ┃ 🔹 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚒𝚗𝚐 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜 & 𝚐𝚛𝚘𝚞𝚙𝚜...
@@ -713,17 +611,32 @@ async function startBot(number, res = null) {
 
 > © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
 
-                // Envoyer le message de bienvenue uniquement si la connexion est VRAIMENT nouvelle
-                if (!existingSession) {
+                try {
+                    await conn.sendMessage(userJid, {
+                        image: { url: 'https://files.catbox.moe/natk49.jpg' },
+                        caption: connectText
+                    });
+                    console.log(`✅ 𝚆𝚎𝚕𝚌𝚘𝚖𝚎 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚜𝚎𝚗𝚝 𝚝𝚘 ${sanitizedNumber}`);
+                } catch (error) {
+                    console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚜𝚎𝚗𝚍 𝚠𝚎𝚕𝚌𝚘𝚖𝚎 𝚖𝚎𝚜𝚜𝚊𝚐𝚎: ${error.message}`);
+                    // Try with text only
                     try {
                         await conn.sendMessage(userJid, {
-                            image: { url: 'https://files.catbox.moe/natk49.jpg' },
-                            caption: connectText
+                            text: connectText
                         });
-                    } catch (error) {
-                        console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚜𝚎𝚗𝚍 𝚠𝚎𝚕𝚌𝚘𝚖𝚎 𝚖𝚎𝚜𝚜𝚊𝚐𝚎: ${error.message}`);
+                    } catch (err2) {
+                        console.log(`⚠️ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚗𝚍 𝚝𝚎𝚡𝚝 𝚠𝚎𝚕𝚌𝚘𝚖𝚎: ${err2.message}`);
                     }
                 }
+
+                setTimeout(async () => {
+                    try {
+                        await autoFollowNewsletters(conn);
+                        await autoUpdateBio(conn, number);
+                    } catch (error) {
+                        console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚒𝚗 𝚊𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠 𝚘𝚛 𝚋𝚒𝚘 𝚞𝚙𝚍𝚊𝚝𝚎:', error.message);
+                    }
+                }, 5000);
 
                 console.log(`🎉 ${sanitizedNumber} 𝚜𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍!`);
             }
@@ -732,13 +645,11 @@ async function startBot(number, res = null) {
                 let reason = lastDisconnect?.error?.output?.statusCode;
                 if (reason === DisconnectReason.loggedOut) {
                     console.log(`❌ 𝚂𝚎𝚜𝚜𝚒𝚘𝚗 𝚌𝚕𝚘𝚜𝚎𝚍: 𝙻𝚘𝚐𝚐𝚎𝚍 𝙾𝚞𝚝.`);
-                    // Clean up bio interval
                     cleanupBioInterval(number);
                 }
             }
         });
 
-        // 9. ANTI-CALL avec config MongoDB
         conn.ev.on('call', async (calls) => {
             try {
                 const userConfig = await getUserConfigFromMongoDB(number);
@@ -758,20 +669,18 @@ async function startBot(number, res = null) {
             }
         });
 
-        // 10. ANTIDELETE
         conn.ev.on('messages.update', async (updates) => {
             await handleAntidelete(conn, updates, store);
         });
 
         // ===============================================================
-        // 📥 MESSAGE HANDLER (UPSERT) AVEC CONFIG MONGODB
+        // 📥 MESSAGE HANDLER (UPSERT) WITH IMPROVED AUTO-REPLY
         // ===============================================================
         conn.ev.on('messages.upsert', async (msg) => {
             try {
                 let mek = msg.messages[0];
                 if (!mek.message) return;
 
-                // Charger config utilisateur
                 const userConfig = await getUserConfigFromMongoDB(number);
 
                 // Normalize Message
@@ -785,16 +694,16 @@ async function startBot(number, res = null) {
                         : mek.message;
                 }
 
-                // Auto Read basé sur config
+                // Auto Read
                 if (userConfig.READ_MESSAGE === 'true') {
                     await conn.readMessages([mek.key]);
                 }
 
-                // Auto-reply handler
+                // Auto-reply handler - IMPROVED
                 if (mek.message?.conversation || mek.message?.extendedTextMessage?.text) {
-                    const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase();
+                    const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase().trim();
 
-                    // Auto-reply messages
+                    // Auto-reply messages - ENHANCED
                     const autoReplies = {
                         "hi": "𝙷𝚒! 👋 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?",
                         "hello": "𝙷𝚎𝚕𝚕𝚘! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
@@ -850,17 +759,25 @@ async function startBot(number, res = null) {
                         "angry": "𝚂𝚊𝚠𝚊 𝚋𝚊𝚗𝚊, 𝚞𝚜𝚒𝚔𝚊𝚜𝚒𝚛𝚒𝚌𝚑𝚎! ☺️",
                         "cool": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞! 😎",
                         "amazing": "𝙰𝚜𝚊𝚗𝚝𝚎 𝚜𝚊𝚗𝚊! 🙏",
-                        "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖"
+                        "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖",
+                        ".owner": "👑 *𝙾𝚆𝙽𝙴𝚁 𝙸𝙽𝙵𝙾*\n\n📛 𝙽𝚊𝚖𝚎: 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑\n📞 𝙽𝚞𝚖𝚋𝚎𝚛: +255 789 661 031\n🔗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: https://wa.me/255789661031\n\n𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
+                        ".menu": "📜 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙼𝙴𝙽𝚄*\n\n🎵 𝙼𝚎𝚍𝚒𝚊: .𝚜𝚘𝚗𝚐, .𝚢𝚝𝚜, .𝚒𝚗𝚜𝚝𝚊\n🧠 𝙰𝙸: .𝚊𝚒, .𝚐𝚙𝚝, .𝚐𝚎𝚖𝚒𝚗𝚒\n🛡️ 𝙰𝚗𝚝𝚒: .𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕, .𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔\n📊 𝚂𝚝𝚊𝚝𝚜: .𝚜𝚝𝚊𝚝𝚜, .𝚙𝚒𝚗𝚐\n\n𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚏𝚞𝚕𝚕 𝚕𝚒𝚜𝚝"
                     };
 
+                    // Check for auto-reply
                     if (autoReplies[messageText] && userConfig.AUTO_REPLY === 'true') {
-                        await conn.sendMessage(mek.key.remoteJid, { 
-                            text: autoReplies[messageText] 
-                        }, { quoted: mek });
+                        try {
+                            await conn.sendMessage(mek.key.remoteJid, { 
+                                text: autoReplies[messageText] 
+                            }, { quoted: mek });
+                            console.log(`🤖 𝙰𝚞𝚝𝚘-𝚛𝚎𝚙𝚕𝚒𝚎𝚍 𝚝𝚘 ${messageText}`);
+                        } catch (replyError) {
+                            console.log(`⚠️ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚗𝚍 𝚊𝚞𝚝𝚘-𝚛𝚎𝚙𝚕𝚢: ${replyError.message}`);
+                        }
                     }
                 }
 
-                // Newsletter Reaction - IMPROVED
+                // Newsletter Reaction
                 const newsletterJids = [
                     "120363296818107681@newsletter",
                     config.CHANNEL_JID_1 || "120363402325089913@newsletter",
@@ -871,12 +788,10 @@ async function startBot(number, res = null) {
                 
                 if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
                     try {
-                        // Check if it's a newsletter message
                         if (mek.newsletterServerId) {
                             const serverId = mek.newsletterServerId;
                             const emoji = newsEmojis[Math.floor(Math.random() * newsEmojis.length)];
                             
-                            // Try to react to newsletter
                             await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
                             console.log(`🎭 𝚁𝚎𝚊𝚌𝚝𝚎𝚍 𝚝𝚘 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚠𝚒𝚝𝚑 ${emoji}`);
                         }
@@ -885,12 +800,10 @@ async function startBot(number, res = null) {
                     }
                 }
 
-                // Status Handling avec config MongoDB
+                // Status Handling
                 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                    // Auto View
                     if (userConfig.AUTO_VIEW_STATUS === "true") await conn.readMessages([mek.key]);
 
-                    // Auto Like
                     if (userConfig.AUTO_LIKE_STATUS === "true") {
                         const jawadlike = await conn.decodeJid(conn.user.id);
                         const emojis = userConfig.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
@@ -900,7 +813,6 @@ async function startBot(number, res = null) {
                         }, { statusJidList: [mek.key.participant, jawadlike] });
                     }
 
-                    // Auto Reply
                     if (userConfig.AUTO_STATUS_REPLY === "true") {
                         const user = mek.key.participant;
                         const text = userConfig.AUTO_STATUS_MSG || config.AUTO_STATUS_MSG;
@@ -919,7 +831,7 @@ async function startBot(number, res = null) {
                 const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : [];
                 const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : '';
 
-                // Handle antilink based on group settings
+                // Handle antilink
                 const antilinkSettingsPath = path.join(__dirname, './database/antilink.json');
                 if (fs.existsSync(antilinkSettingsPath)) {
                     const antilinkSettings = JSON.parse(fs.readFileSync(antilinkSettingsPath, 'utf8'));
@@ -964,7 +876,7 @@ async function startBot(number, res = null) {
                     } catch(e) {}
                 }
 
-                // Auto Presence basé sur config MongoDB
+                // Auto Presence
                 if (userConfig.AUTO_TYPING === 'true') await conn.sendPresenceUpdate('composing', from);
                 if (userConfig.AUTO_RECORDING === 'true') await conn.sendPresenceUpdate('recording', from);
 
@@ -1015,7 +927,6 @@ async function startBot(number, res = null) {
                 // Execute silatech
                 const cmdName = isCmd ? body.slice(config.PREFIX.length).trim().split(" ")[0].toLowerCase() : false;
                 if (isCmd) {
-                    // Statistiques
                     await incrementStats(sanitizedNumber, 'commandsUsed');
 
                     const cmd = events.commands.find((cmd) => cmd.pattern === (cmdName)) || events.commands.find((cmd) => cmd.alias && cmd.alias.includes(cmdName));
@@ -1036,7 +947,7 @@ async function startBot(number, res = null) {
                     }
                 }
 
-                // Statistiques messages
+                // Statistics
                 await incrementStats(sanitizedNumber, 'messagesReceived');
                 if (isGroup) {
                     await incrementStats(sanitizedNumber, 'groupsInteracted');
@@ -1066,7 +977,6 @@ async function startBot(number, res = null) {
             });
         }
     } finally {
-        // Libérer le verrou
         if (connectionLockKey) {
             global[connectionLockKey] = false;
         }
@@ -1074,7 +984,7 @@ async function startBot(number, res = null) {
 }
 
 // ==============================================================================
-// 4. ROUTES API
+// 4. API ROUTES
 // ==============================================================================
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, 'pair.html')));
@@ -1085,12 +995,10 @@ router.get('/code', async (req, res) => {
     await startBot(number, res);
 });
 
-// Route pour vérifier statut
 router.get('/status', async (req, res) => {
     const { number } = req.query;
 
     if (!number) {
-        // Retourner toutes les connexions actives
         const activeConnections = Array.from(activeSockets.keys()).map(num => {
             const status = getConnectionStatus(num);
             return {
@@ -1120,7 +1028,6 @@ router.get('/status', async (req, res) => {
     });
 });
 
-// Route pour déconnecter
 router.get('/disconnect', async (req, res) => {
     const { number } = req.query;
     if (!number) {
@@ -1138,11 +1045,9 @@ router.get('/disconnect', async (req, res) => {
     try {
         const socket = activeSockets.get(sanitizedNumber);
 
-        // Fermer connexion
         await socket.ws.close();
         socket.ev.removeAllListeners();
 
-        // Supprimer du tracking et de la base de données
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
         await removeNumberFromMongoDB(sanitizedNumber);
@@ -1163,7 +1068,6 @@ router.get('/disconnect', async (req, res) => {
     }
 });
 
-// Route pour voir numéros actifs
 router.get('/active', (req, res) => {
     res.json({
         count: activeSockets.size,
@@ -1171,7 +1075,6 @@ router.get('/active', (req, res) => {
     });
 });
 
-// Route ping
 router.get('/ping', (req, res) => {
     res.json({
         status: 'active',
@@ -1181,7 +1084,6 @@ router.get('/ping', (req, res) => {
     });
 });
 
-// Route pour reconnecter tous
 router.get('/connect-all', async (req, res) => {
     try {
         const numbers = await getAllNumbersFromMongoDB();
@@ -1217,7 +1119,6 @@ router.get('/connect-all', async (req, res) => {
     }
 });
 
-// Route pour reconfigurer
 router.get('/update-config', async (req, res) => {
     const { number, config: configString } = req.query;
     if (!number || !configString) {
@@ -1237,14 +1138,11 @@ router.get('/update-config', async (req, res) => {
         return res.status(404).json({ error: '𝙽𝚘 𝚊𝚌𝚝𝚒𝚟𝚎 𝚜𝚎𝚜𝚜𝚒𝚘𝚗 𝚏𝚘𝚞𝚗𝚍 𝚏𝚘𝚛 𝚝𝚑𝚒𝚜 𝚗𝚞𝚖𝚋𝚎𝚛' });
     }
 
-    // Générer OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Sauvegarder OTP dans MongoDB
     await saveOTPToMongoDB(sanitizedNumber, otp, newConfig);
 
     try {
-        // Envoyer OTP
         const userJid = jidNormalizedUser(socket.user.id);
         await socket.sendMessage(userJid, {
             text: `*🔐 𝙲𝙾𝙽𝙵𝙸𝙶𝚄𝚁𝙰𝚃𝙸𝙾𝙽 𝚄𝙿𝙳𝙰𝚃𝙴*\n\n𝚈𝚘𝚞𝚛 𝙾𝚃𝙿: *${otp}*\n𝚅𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 5 𝚖𝚒𝚗𝚞𝚝𝚎𝚜\n\n𝚄𝚜𝚎: .𝚟𝚎𝚛𝚒𝚏𝚢-𝚘𝚝𝚙 ${otp}`
@@ -1260,7 +1158,6 @@ router.get('/update-config', async (req, res) => {
     }
 });
 
-// Route pour vérifier OTP
 router.get('/verify-otp', async (req, res) => {
     const { number, otp } = req.query;
     if (!number || !otp) {
@@ -1292,7 +1189,6 @@ router.get('/verify-otp', async (req, res) => {
     }
 });
 
-// Route pour statistiques
 router.get('/stats', async (req, res) => {
     const { number } = req.query;
 
@@ -1318,7 +1214,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ==============================================================================
-// 5. RECONNEXION AUTOMATIQUE AU DÉMARRAGE
+// 5. AUTO RECONNECT AT STARTUP
 // ==============================================================================
 
 async function autoReconnectFromMongoDB() {
@@ -1342,7 +1238,7 @@ async function autoReconnectFromMongoDB() {
                     status: () => mockRes 
                 };
                 await startBot(number, mockRes);
-                await delay(2000); // Attendre entre chaque reconnexion
+                await delay(2000);
             } else {
                 console.log(`✅ 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍: ${number}`);
             }
@@ -1354,20 +1250,50 @@ async function autoReconnectFromMongoDB() {
     }
 }
 
-// Démarrer reconnexion automatique après 3 secondes
 setTimeout(() => {
     autoReconnectFromMongoDB();
 }, 3000);
 
 // ==============================================================================
-// 6. TELEGRAM BOT POUR PAIRING
+// 6. TELEGRAM BOT CONFIGURATION
 // ==============================================================================
 
 const { Telegraf, Markup } = require('telegraf');
+const path = require('path');
+const fs = require('fs-extra');
+
+// Create silatelegram directory
+const silatelegramDir = path.join(__dirname, 'silatelegram');
+if (!fs.existsSync(silatelegramDir)) {
+    fs.mkdirSync(silatelegramDir, { recursive: true });
+    console.log(`📁 𝙲𝚛𝚎𝚊𝚝𝚎𝚍 𝚜𝚒𝚕𝚊𝚝𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚍𝚒𝚛𝚎𝚌𝚝𝚘𝚛𝚢`);
+}
 
 // Check if Telegram token is configured
 if (config.TELEGRAM_BOT_TOKEN) {
     const bot = new Telegraf(config.TELEGRAM_BOT_TOKEN);
+
+    // Function to load telegram commands
+    function loadTelegramCommands() {
+        try {
+            const telegramFiles = fs.readdirSync(silatelegramDir).filter(file => file.endsWith('.js'));
+            console.log(`📦 𝙻𝚘𝚊𝚍𝚒𝚗𝚐 ${telegramFiles.length} 𝚝𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜...`);
+            
+            for (const file of telegramFiles) {
+                try {
+                    const command = require(path.join(silatelegramDir, file));
+                    if (command && command.command && command.function) {
+                        bot.command(command.command, command.function);
+                        console.log(`✅ 𝙻𝚘𝚊𝚍𝚎𝚍 𝚝𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚌𝚘𝚖𝚖𝚊𝚗𝚍: /${command.command}`);
+                    }
+                } catch (e) {
+                    console.error(`❌ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚕𝚘𝚊𝚍 𝚝𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 ${file}:`, e);
+                }
+            }
+        } catch (error) {
+            console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚕𝚘𝚊𝚍𝚒𝚗𝚐 𝚝𝚎𝚕𝚎𝚐𝚛𝚊𝚖 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜:', error);
+        }
+    }
 
     bot.start((ctx) => {
         const welcomeMessage = `🤖 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝚂𝚈𝚂𝚃𝙴𝙼* 🤖
@@ -1387,6 +1313,8 @@ if (config.TELEGRAM_BOT_TOKEN) {
 /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> - 𝙿𝚊𝚒𝚛 𝚢𝚘𝚞𝚛 𝚋𝚘𝚝
 /𝚘𝚠𝚗𝚎𝚛 - 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛
 /𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜 𝚖𝚎𝚗𝚞
+/𝚙𝚒𝚗𝚐 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚞𝚜
+/𝚊𝚕𝚒𝚟𝚎 - 𝙲𝚑𝚎𝚌𝚔 𝚒𝚏 𝚋𝚘𝚝 𝚒𝚜 𝚊𝚕𝚒𝚟𝚎
 
 🚀 *𝚂𝚞𝚙𝚙𝚘𝚛𝚝 𝙻𝚒𝚗𝚔𝚜:*
 • 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD
@@ -1406,7 +1334,16 @@ if (config.TELEGRAM_BOT_TOKEN) {
             ]
         ]);
 
-        ctx.replyWithMarkdown(welcomeMessage, buttons);
+        ctx.replyWithPhoto(
+            { url: 'https://files.catbox.moe/natk49.jpg' },
+            {
+                caption: welcomeMessage,
+                parse_mode: 'Markdown',
+                ...buttons
+            }
+        ).catch(() => {
+            ctx.replyWithMarkdown(welcomeMessage, buttons);
+        });
     });
 
     bot.command('pair', async (ctx) => {
@@ -1423,16 +1360,21 @@ if (config.TELEGRAM_BOT_TOKEN) {
         }
 
         try {
-            // Send initial message
             ctx.reply(`⏳ *𝙿𝚊𝚒𝚛𝚒𝚗𝚐 𝚒𝚗 𝚙𝚛𝚘𝚐𝚛𝚎𝚜𝚜...*\n\n𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n𝚂𝚝𝚊𝚝𝚞𝚜: 𝙸𝚗𝚒𝚝𝚒𝚊𝚝𝚒𝚗𝚐 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗...`, { parse_mode: 'Markdown' });
 
-            // Create a mock response object for startBot
             const mockRes = {
                 headersSent: false,
                 json: (data) => {
                     if (data.code) {
-                        // Pairing code generated
-                        ctx.reply(`✅ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙲𝙾𝙳𝙴 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔑 𝙲𝚘𝚍𝚎: *${data.code}*\n\n📋 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*\n1️⃣ 𝙾𝚙𝚎𝚗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚘𝚗 𝚢𝚘𝚞𝚛 𝚙𝚑𝚘𝚗𝚎\n2️⃣ 𝙶𝚘 𝚝𝚘 𝙻𝚒𝚗𝚔𝚎𝚍 𝙳𝚎𝚟𝚒𝚌𝚎𝚜\n3️⃣ 𝙰𝚍𝚍 𝚊 𝚗𝚎𝚠 𝚍𝚎𝚟𝚒𝚌𝚎\n4️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎: *${data.code}*\n5️⃣ 𝚆𝚊𝚒𝚝 𝚏𝚘𝚛 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚘𝚗𝚏𝚒𝚛𝚖𝚊𝚝𝚒𝚘𝚗\n\n⚠️ *𝙽𝚘𝚝𝚎:* 𝚃𝚑𝚒𝚜 𝚌𝚘𝚍𝚎 𝚒𝚜 𝚟𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 20 𝚜𝚎𝚌𝚘𝚗𝚍𝚜 𝚘𝚗𝚕𝚢!`, { parse_mode: 'Markdown' });
+                        ctx.replyWithPhoto(
+                            { url: 'https://files.catbox.moe/natk49.jpg' },
+                            {
+                                caption: `✅ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙲𝙾𝙳𝙴 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔑 𝙲𝚘𝚍𝚎: *${data.code}*\n\n📋 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*\n1️⃣ 𝙾𝚙𝚎𝚗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚘𝚗 𝚢𝚘𝚞𝚛 𝚙𝚑𝚘𝚗𝚎\n2️⃣ 𝙶𝚘 𝚝𝚘 𝙻𝚒𝚗𝚔𝚎𝚍 𝙳𝚎𝚟𝚒𝚌𝚎𝚜\n3️⃣ 𝙰𝚍𝚍 𝚊 𝚗𝚎𝚠 𝚍𝚎𝚟𝚒𝚌𝚎\n4️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎: *${data.code}*\n5️⃣ 𝚆𝚊𝚒𝚝 𝚏𝚘𝚛 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚘𝚗𝚏𝚒𝚛𝚖𝚊𝚝𝚒𝚘𝚝𝚒𝚘𝚗\n\n⚠️ *𝙽𝚘𝚝𝚎:* 𝚃𝚑𝚒𝚜 𝚌𝚘𝚍𝚎 𝚒𝚜 𝚟𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 20 𝚜𝚎𝚌𝚘𝚗𝚍𝚜 𝚘𝚗𝚕𝚢!`,
+                                parse_mode: 'Markdown'
+                            }
+                        ).catch(() => {
+                            ctx.reply(`✅ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙲𝙾𝙳𝙴 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔑 𝙲𝚘𝚍𝚎: *${data.code}*\n\n📋 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*\n1️⃣ 𝙾𝚙𝚎𝚗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚘𝚗 𝚢𝚘𝚞𝚛 𝚙𝚑𝚘𝚗𝚎\n2️⃣ 𝙶𝚘 𝚝𝚘 𝙻𝚒𝚗𝚔𝚎𝚍 𝙳𝚎𝚟𝚒𝚌𝚎𝚜\n3️⃣ 𝙰𝚍𝚍 𝚊 𝚗𝚎𝚠 𝚍𝚎𝚟𝚒𝚌𝚎\n4️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎: *${data.code}*\n5️⃣ 𝚆𝚊𝚒𝚝 𝚏𝚘𝚛 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚘𝚗𝚏𝚒𝚛𝚖𝚊𝚝𝚒𝚘𝚝𝚒𝚘𝚗\n\n⚠️ *𝙽𝚘𝚝𝚎:* 𝚃𝚑𝚒𝚜 𝚌𝚘𝚍𝚎 𝚒𝚜 𝚟𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 20 𝚜𝚎𝚌𝚘𝚗𝚍𝚜 𝚘𝚗𝚕𝚢!`, { parse_mode: 'Markdown' });
+                        });
                     } else if (data.status === 'already_connected') {
                         ctx.reply(`✅ *𝙱𝙾𝚃 𝙰𝙻𝚁𝙴𝙰𝙳𝚈 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔗 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚊𝚌𝚝𝚒𝚟𝚎\n⏰ 𝚄𝚙𝚝𝚒𝚖𝚎: ${data.uptime}\n\n𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚛𝚞𝚗𝚗𝚒𝚗𝚐 𝚊𝚗𝚍 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚎𝚍.`, { parse_mode: 'Markdown' });
                     } else if (data.status === 'reconnecting') {
@@ -1444,7 +1386,6 @@ if (config.TELEGRAM_BOT_TOKEN) {
                 status: () => mockRes
             };
 
-            // Call startBot with the number
             await startBot(sanitizedNumber, mockRes);
 
         } catch (error) {
@@ -1453,26 +1394,8 @@ if (config.TELEGRAM_BOT_TOKEN) {
         }
     });
 
-    bot.command('owner', (ctx) => {
-        ctx.replyWithMarkdown(`👑 *𝙾𝚆𝙽𝙴𝚁 𝙸𝙽𝙵𝙾𝚁𝙼𝙰𝚃𝙸𝙾𝙽*\n\n📛 𝙽𝚊𝚖𝚎: 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑\n📞 𝙿𝚑𝚘𝚗𝚎: +255 789 661 031\n📧 𝙴𝚖𝚊𝚒𝚕: silatech@example.com\n\n🔗 *𝚂𝚘𝚌𝚒𝚊𝚕 𝙻𝚒𝚗𝚔𝚜:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: https://wa.me/255789661031\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @silatech_admin\n\n💡 *𝙵𝚘𝚛 𝚜𝚞𝚙𝚙𝚘𝚛𝚝 𝚘𝚛 𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗𝚜, 𝚙𝚕𝚎𝚊𝚜𝚎 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚖𝚎 𝚍𝚒𝚛𝚎𝚌𝚝𝚕𝚢.*`);
-    });
-
-    bot.command('menu', (ctx) => {
-        const menuMessage = `📜 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙱𝙾𝚃 𝙼𝙴𝙽𝚄*\n\n🤖 *𝙱𝙰𝚂𝙸𝙲 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂:*\n• /𝚜𝚝𝚊𝚛𝚝 - 𝚂𝚝𝚊𝚛𝚝 𝚝𝚑𝚎 𝚋𝚘𝚝\n• /𝚙𝚊𝚒𝚛 <𝚗𝚞𝚖𝚋𝚎𝚛> - 𝙿𝚊𝚒𝚛 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝\n• /𝚘𝚠𝚗𝚎𝚛 - 𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛\n• /𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚝𝚑𝚒𝚜 𝚖𝚎𝚗𝚞\n\n🔧 *𝙱𝙾𝚃 𝙲𝙾𝙽𝚃𝚁𝙾𝙻:*\n• .𝚖𝚎𝚗𝚞 - 𝚂𝚑𝚘𝚠 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚋𝚘𝚝 𝚖𝚎𝚗𝚞\n• .𝚜𝚝𝚊𝚝𝚞𝚜 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚞𝚜\n• .𝚛𝚎𝚜𝚝𝚊𝚛𝚝 - 𝚁𝚎𝚜𝚝𝚊𝚛𝚝 𝚋𝚘𝚝\n• .𝚋𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 - 𝙱𝚛𝚘𝚊𝚍𝚌𝚊𝚜𝚝 𝚖𝚎𝚜𝚜𝚊𝚐𝚎\n\n🛡️ *𝚂𝙴𝙲𝚄𝚁𝙸𝚃𝚈:*\n• .𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔\n• .𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕 [𝚘𝚗/𝚘𝚏𝚏] - 𝙲𝚘𝚗𝚝𝚛𝚘𝚕 𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕\n• .𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎 - 𝚃𝚘𝚐𝚐𝚕𝚎 𝚊𝚗𝚝𝚒𝚍𝚎𝚕𝚎𝚝𝚎\n\n🎵 *𝙼𝙴𝙳𝙸𝙰:*\n• .𝚙𝚕𝚊𝚢 <𝚜𝚘𝚗𝚐> - 𝙿𝚕𝚊𝚢 𝚖𝚞𝚜𝚒𝚌\n• .𝚢𝚝𝚜 <𝚚𝚞𝚎𝚛𝚢> - 𝚂𝚎𝚊𝚛𝚌𝚑 𝚈𝚘𝚞𝚃𝚞𝚋𝚎\n• .𝚒𝚗𝚜𝚝𝚊 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙸𝚗𝚜𝚝𝚊𝚐𝚛𝚊𝚖\n• .𝚏𝚋 <𝚞𝚛𝚕> - 𝙳𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝙵𝚊𝚌𝚎𝚋𝚘𝚘𝚔\n\n🧠 *𝙰𝙸 𝙵𝙴𝙰𝚃𝚄𝚁𝙴𝚂:*\n• .𝚊𝚒 <𝚚𝚞𝚎𝚜𝚝𝚒𝚘𝚗> - 𝙰𝚜𝚔 𝙰𝙸\n• .𝚐𝚙𝚝 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝚄𝚜𝚎 𝙶𝙿𝚃\n• .𝚐𝚎𝚖𝚒𝚗𝚒 <𝚚𝚞𝚎𝚛𝚢> - 𝚄𝚜𝚎 𝙶𝚎𝚖𝚒𝚗𝚒 𝙰𝙸\n• .𝚍𝚊𝚕𝚕𝚎 <𝚙𝚛𝚘𝚖𝚙𝚝> - 𝙶𝚎𝚗𝚎𝚛𝚊𝚝𝚎 𝙸𝚖𝚊𝚐𝚎\n\n📊 *𝚂𝚃𝙰𝚃𝚂:*\n• .𝚜𝚝𝚊𝚝𝚜 - 𝚂𝚑𝚘𝚠 𝚋𝚘𝚝 𝚜𝚝𝚊𝚝𝚒𝚜𝚝𝚒𝚌𝚜\n• .𝚙𝚒𝚗𝚐 - 𝙲𝚑𝚎𝚌𝚔 𝚋𝚘𝚝 𝚕𝚊𝚝𝚎𝚗𝚌𝚢\n• .𝚜𝚙𝚎𝚎𝚍 - 𝚃𝚎𝚜𝚝 𝚋𝚘𝚝 𝚜𝚙𝚎𝚎𝚍\n\n🔗 *𝚂𝚄𝙿𝙿𝙾𝚁𝚃 𝙻𝙸𝙽𝙺𝚂:*\n• 𝙶𝚒𝚝𝙷𝚞𝚋: https://github.com/Sila-Md/SILA-MD\n• 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: ${config.CHANNEL_LINK || 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02'}\n• 𝚃𝚎𝚕𝚎𝚐𝚛𝚊𝚖: @sila_tech2\n\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
-
-        const buttons = Markup.inlineKeyboard([
-            [
-                Markup.button.url('📢 𝙲𝚑𝚊𝚗𝚗𝚎𝚕', 'https://t.me/sila_tech2'),
-                Markup.button.url('👥 𝙶𝚛𝚘𝚞𝚙', 'https://t.me/sila_md')
-            ],
-            [
-                Markup.button.url('⭐ 𝙶𝚒𝚝𝙷𝚞𝚋', 'https://github.com/Sila-Md/SILA-MD'),
-                Markup.button.url('🤖 𝚃𝚛𝚢 𝙱𝚘𝚝', 'https://t.me/momy_kidy_bot')
-            ]
-        ]);
-
-        ctx.replyWithMarkdown(menuMessage, buttons);
-    });
+    // Load telegram commands
+    loadTelegramCommands();
 
     // Start Telegram bot
     bot.launch().then(() => {
@@ -1499,7 +1422,6 @@ process.on('exit', () => {
         socketCreationTime.delete(number);
     });
 
-    // Nettoyer sessions locales
     const sessionDir = path.join(__dirname, 'session');
     if (fs.existsSync(sessionDir)) {
         fs.emptyDirSync(sessionDir);
@@ -1508,7 +1430,6 @@ process.on('exit', () => {
 
 process.on('uncaughtException', (err) => {
     console.error('𝚄𝚗𝚌𝚊𝚞𝚐𝚑𝚝 𝚎𝚡𝚌𝚎𝚙𝚝𝚒𝚘𝚗:', err);
-    // Redémarrer avec PM2 si configuré
     if (process.env.PM2_NAME) {
         const { exec } = require('child_process');
         exec(`pm2 restart ${process.env.PM2_NAME}`);
