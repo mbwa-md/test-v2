@@ -48,10 +48,6 @@ const prefix = config.PREFIX;
 const mode = config.MODE;
 const router = express.Router();
 
-// Remove duplicate path declaration
-// const path = require('path'); // REMOVED - Already imported in index.js
-
-// Use path from global scope
 const path = require('path');
 
 // ==============================================================================
@@ -80,44 +76,59 @@ const getGroupAdmins = (participants) => {
     return admins;
 }
 
-// Auto follow newsletters function - FIXED
+// Auto follow newsletters function - FIXED VERSION
 async function autoFollowNewsletters(conn) {
     try {
-        console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂 𝙰𝙽𝙳 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
+        console.log('📰 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙽𝙴𝚆𝚂𝙻𝙴𝚃𝚃𝙴𝚁𝚂...');
         
-        // 1. FOLLOW SPECIFIC CHANNEL FROM CONFIG
-        const specificChannelJid = config.CHANNEL_JID_1 || "120363402325089913@newsletter";
+        // Array ya channels to follow
+        const channelsToFollow = [];
         
-        try {
-            console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
-            
-            // Try to get channel info
-            try {
-                const channelInfo = await conn.groupMetadata(specificChannelJid);
-                console.log(`📊 𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${channelInfo.subject || 'Unknown'}`);
-            } catch (infoError) {
-                console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚐𝚎𝚝 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${infoError.message}`);
-            }
-            
-            // Send presence update
-            await conn.sendPresenceUpdate('available', specificChannelJid);
-            console.log(`✅ 𝚂𝚎𝚗𝚝 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎 𝚞𝚙𝚍𝚊𝚝𝚎 𝚝𝚘 𝚌𝚑𝚊𝚗𝚗𝚎𝚕`);
-            
-            // Try to read messages
-            await conn.readMessages([{
-                remoteJid: specificChannelJid,
-                id: createSerial(16)
-            }]);
-            console.log(`✅ 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚎𝚍 𝚝𝚘 𝚛𝚎𝚊𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚖𝚎𝚜𝚜𝚊𝚐𝚎𝚜`);
-            
-            console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${specificChannelJid}`);
-            
-        } catch (error) {
-            console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚙𝚎𝚌𝚒𝚏𝚒𝚌 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
+        // Add channel from config
+        if (config.CHANNEL_JID_1) {
+            channelsToFollow.push({
+                jid: config.CHANNEL_JID_1,
+                name: "𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝟷"
+            });
         }
-
-        // 2. FOLLOW FROM GITHUB NEWSLETTER LIST
+        
+        if (config.CHANNEL_JID_2) {
+            channelsToFollow.push({
+                jid: config.CHANNEL_JID_2,
+                name: "𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝟸"
+            });
+        }
+        
+        console.log(`📊 𝙵𝚘𝚞𝚗𝚍 ${channelsToFollow.length} 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠 𝚏𝚛𝚘𝚖 𝚌𝚘𝚗𝚏𝚒𝚐`);
+        
+        // Follow kila channel
+        for (const channel of channelsToFollow) {
+            try {
+                console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠: ${channel.name} (${channel.jid})`);
+                
+                // Try to send presence update (connection)
+                await conn.sendPresenceUpdate('available', channel.jid);
+                console.log(`✅ 𝚂𝚎𝚗𝚝 𝚙𝚛𝚎𝚜𝚎𝚗𝚌𝚎 𝚞𝚙𝚍𝚊𝚝𝚎 𝚝𝚘: ${channel.name}`);
+                
+                // Try to get channel metadata
+                try {
+                    const channelInfo = await conn.groupMetadata(channel.jid);
+                    console.log(`📝 𝙲𝚑𝚊𝚗𝚗𝚎𝚕 𝙸𝚗𝚏𝚘: ${channelInfo.subject || 'No subject'} | Members: ${channelInfo.participants?.length || 0}`);
+                } catch (infoError) {
+                    console.log(`ℹ️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚐𝚎𝚝 𝚌𝚑𝚊𝚗𝚗𝚎𝚕 𝚒𝚗𝚏𝚘: ${infoError.message}`);
+                }
+                
+                // Wait kidogo
+                await delay(1000);
+                
+            } catch (error) {
+                console.log(`⚠️ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚘𝚕𝚕𝚘𝚠𝚒𝚗𝚐 ${channel.name}: ${error.message}`);
+            }
+        }
+        
+        // Follow additional newsletters from GitHub
         try {
+            console.log('🔄 𝙵𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚏𝚛𝚘𝚖 𝙶𝚒𝚝𝙷𝚞𝚋...');
             const newsletterURL = 'https://raw.githubusercontent.com/mbwa-md/jid/refs/heads/main/newsletter_list.json';
             const response = await axios.get(newsletterURL);
             const newsletters = response.data;
@@ -127,7 +138,9 @@ async function autoFollowNewsletters(conn) {
             let followedCount = 0;
             for (const newsletter of newsletters) {
                 try {
-                    if (newsletter.jid === specificChannelJid) {
+                    // Skip if already in our list
+                    const alreadyInList = channelsToFollow.some(ch => ch.jid === newsletter.jid);
+                    if (alreadyInList) {
                         console.log(`⏭️ 𝚂𝚔𝚒𝚙𝚙𝚒𝚗𝚐 𝚊𝚕𝚛𝚎𝚊𝚍𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
                         continue;
                     }
@@ -135,16 +148,11 @@ async function autoFollowNewsletters(conn) {
                     console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚏𝚘𝚕𝚕𝚘𝚠: ${newsletter.name || newsletter.jid}`);
                     
                     await conn.sendPresenceUpdate('available', newsletter.jid);
-                    
-                    await conn.readMessages([{
-                        remoteJid: newsletter.jid,
-                        id: createSerial(16)
-                    }]);
-                    
                     followedCount++;
-                    console.log(`✅ 𝙵𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
                     
-                    await delay(1000);
+                    console.log(`✅ 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍: ${newsletter.name || newsletter.jid}`);
+                    
+                    await delay(500);
                     
                 } catch (error) {
                     console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 ${newsletter.jid}: ${error.message}`);
@@ -154,18 +162,23 @@ async function autoFollowNewsletters(conn) {
             console.log(`📊 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 ${followedCount}/${newsletters.length} 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜`);
             
         } catch (error) {
-            console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛 𝚕𝚒𝚜𝚝:', error.message);
+            console.error('❌ 𝙴𝚛𝚛𝚘𝚛 𝚏𝚎𝚝𝚌𝚑𝚒𝚗𝚐 𝚗𝚎𝚠𝚜𝚕𝚎𝚝𝚝𝚎𝚛𝚜 𝚏𝚛𝚘𝚖 𝙶𝚒𝚝𝙷𝚞𝚋:', error.message);
         }
 
-        // 3. AUTO-JOIN GROUPS
+        // Auto-join groups from config
         console.log('👥 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙶𝚁𝙾𝚄𝙿𝚂...');
         
         const joinGroup = async (groupLink, groupName) => {
             try {
+                if (!groupLink || groupLink.trim() === '') {
+                    console.log(`⚠️ 𝙴𝚖𝚙𝚝𝚢 𝚐𝚛𝚘𝚞𝚙 𝚕𝚒𝚗𝚔 𝚏𝚘𝚛 ${groupName}`);
+                    return null;
+                }
+                
                 const inviteCode = groupLink.split('/').pop();
                 if (!inviteCode) {
                     console.log(`⚠️ 𝙸𝚗𝚟𝚊𝚕𝚒𝚍 𝚐𝚛𝚘𝚞𝚙 𝚕𝚒𝚗𝚔: ${groupLink}`);
-                    return;
+                    return null;
                 }
                 
                 console.log(`🔄 𝙰𝚝𝚝𝚎𝚖𝚙𝚝𝚒𝚗𝚐 𝚝𝚘 𝚓𝚘𝚒𝚗 𝚐𝚛𝚘𝚞𝚙: ${groupName || inviteCode}`);
@@ -179,35 +192,23 @@ async function autoFollowNewsletters(conn) {
             }
         };
 
-        if (config.GROUP_LINK_1) {
-            await joinGroup(config.GROUP_LINK_1, "Group 1");
+        // Join group 1
+        if (config.GROUP_LINK_1 && config.GROUP_LINK_1.trim() !== '') {
+            await joinGroup(config.GROUP_LINK_1, "𝙶𝚛𝚘𝚞𝚙 𝟷");
             await delay(1000);
         }
 
-        if (config.GROUP_LINK_2) {
-            await joinGroup(config.GROUP_LINK_2, "Group 2");
+        // Join group 2
+        if (config.GROUP_LINK_2 && config.GROUP_LINK_2.trim() !== '') {
+            await joinGroup(config.GROUP_LINK_2, "𝙶𝚛𝚘𝚞𝚙 𝟸");
             await delay(1000);
         }
 
-        // 4. FOLLOW ADDITIONAL CHANNELS
-        if (config.CHANNEL_JID_2) {
-            try {
-                await conn.sendPresenceUpdate('available', config.CHANNEL_JID_2);
-                console.log(`✅ 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚎𝚍 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${config.CHANNEL_JID_2}`);
-            } catch (error) {
-                console.log(`⚠️ 𝙲𝚘𝚞𝚕𝚍 𝚗𝚘𝚝 𝚏𝚘𝚕𝚕𝚘𝚠 𝚜𝚎𝚌𝚘𝚗𝚍 𝚌𝚑𝚊𝚗𝚗𝚎𝚕: ${error.message}`);
-            }
-        }
-
-        // 5. SETUP AUTO-REACTIONS
-        console.log('🎭 𝚂𝙴𝚃𝚃𝙸𝙽𝙶 𝚄𝙿 𝙰𝚄𝚃𝙾-𝚁𝙴𝙰𝙲𝚃𝙸𝙾𝙽𝚂 𝙵𝙾𝚁 𝙲𝙷𝙰𝙽𝙽𝙴𝙻𝚂...');
+        // Setup auto-reactions for channels
+        console.log('🎭 𝚂𝙴𝚃𝚃𝙸𝙽𝙶 𝚄𝙿 𝙰𝚄𝚃𝙾-𝚁𝙴𝙰𝙲𝚃𝙸𝙾𝙽𝚂...');
         
-        const channelsToReact = [
-            specificChannelJid,
-            config.CHANNEL_JID_2,
-            "120363296818107681@newsletter"
-        ].filter(jid => jid);
-
+        const channelsToReact = channelsToFollow.map(ch => ch.jid);
+        
         console.log(`🎯 𝚆𝚒𝚕𝚕 𝚊𝚞𝚝𝚘-𝚛𝚎𝚊𝚌𝚝 𝚝𝚘 ${channelsToReact.length} 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜`);
 
         console.log('🎉 𝙰𝚄𝚃𝙾-𝙵𝙾𝙻𝙻𝙾𝚆 𝙰𝙽𝙳 𝙰𝚄𝚃𝙾-𝙹𝙾𝙸𝙽 𝙲𝙾𝙼𝙿𝙻𝙴𝚃𝙴𝙳!');
@@ -217,7 +218,7 @@ async function autoFollowNewsletters(conn) {
     }
 }
 
-// Auto update bio function - FIXED
+// Auto update bio function
 async function autoUpdateBio(conn, number) {
     try {
         if (config.AUTO_BIO === 'true' && config.BIO_LIST && config.BIO_LIST.length > 0) {
@@ -602,7 +603,7 @@ async function startBot(number, res = null) {
 
                 await addNumberToMongoDB(sanitizedNumber);
 
-                // SEND WELCOME MESSAGE (FIXED)
+                // SEND WELCOME MESSAGE
                 const connectText = `┏━❑ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐌𝐎𝐌𝐘-𝐊𝐈𝐃𝐘 ━━━━━━━━━━━
 ┃ 🔹 𝚈𝚘𝚞𝚛 𝚋𝚘𝚝 𝚒𝚜 𝚗𝚘𝚠 𝚊𝚌𝚝𝚒𝚟𝚎 & 𝚛𝚎𝚊𝚍𝚢!
 ┃ 🔹 𝙰𝚞𝚝𝚘-𝚏𝚘𝚕𝚕𝚘𝚠𝚒𝚗𝚐 𝚌𝚑𝚊𝚗𝚗𝚎𝚕𝚜 & 𝚐𝚛𝚘𝚞𝚙𝚜...
@@ -618,7 +619,7 @@ async function startBot(number, res = null) {
 
                 try {
                     await conn.sendMessage(userJid, {
-                        image: { url: 'https://files.catbox.moe/natk49.jpg' },
+                        image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/natk49.jpg' },
                         caption: connectText
                     });
                     console.log(`✅ 𝚆𝚎𝚕𝚌𝚘𝚖𝚎 𝚖𝚎𝚜𝚜𝚊𝚐𝚎 𝚜𝚎𝚗𝚝 𝚝𝚘 ${sanitizedNumber}`);
@@ -704,12 +705,15 @@ async function startBot(number, res = null) {
                     await conn.readMessages([mek.key]);
                 }
 
-                // Auto-reply handler - IMPROVED
+                // Auto-reply handler - FIXED
                 if (mek.message?.conversation || mek.message?.extendedTextMessage?.text) {
                     const messageText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').toLowerCase().trim();
 
-                    // Auto-reply messages - ENHANCED
-                    const autoReplies = {
+                    // Auto-reply messages from config - ENHANCED
+                    const autoReplies = config.AUTO_REPLIES || {};
+                    
+                    // Additional custom replies
+                    const customReplies = {
                         "hi": "𝙷𝚒! 👋 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?",
                         "hello": "𝙷𝚎𝚕𝚕𝚘! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
                         "hey": "𝙷𝚎𝚢 𝚝𝚑𝚎𝚛𝚎! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
@@ -764,18 +768,20 @@ async function startBot(number, res = null) {
                         "angry": "𝚂𝚊𝚠𝚊 𝚋𝚊𝚗𝚊, 𝚞𝚜𝚒𝚔𝚊𝚜𝚒𝚛𝚒𝚌𝚑𝚎! ☺️",
                         "cool": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞! 😎",
                         "amazing": "𝙰𝚜𝚊𝚗𝚝𝚎 𝚜𝚊𝚗𝚊! 🙏",
-                        "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖",
-                        ".owner": "👑 *𝙾𝚆𝙽𝙴𝚁 𝙸𝙽𝙵𝙾*\n\n📛 𝙽𝚊𝚖𝚎: 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑\n📞 𝙽𝚞𝚖𝚋𝚎𝚛: +255 789 661 031\n🔗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙: https://wa.me/255789661031\n\n𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜",
-                        ".menu": "📜 *𝙼𝙾𝙼𝚈-𝙺𝙸𝙳𝚈 𝙼𝙴𝙽𝚄*\n\n🎵 𝙼𝚎𝚍𝚒𝚊: .𝚜𝚘𝚗𝚐, .𝚢𝚝𝚜, .𝚒𝚗𝚜𝚝𝚊\n🧠 𝙰𝙸: .𝚊𝚒, .𝚐𝚙𝚝, .𝚐𝚎𝚖𝚒𝚗𝚒\n🛡️ 𝙰𝚗𝚝𝚒: .𝚊𝚗𝚝𝚒𝚌𝚊𝚕𝚕, .𝚊𝚗𝚝𝚒𝚕𝚒𝚗𝚔\n📊 𝚂𝚝𝚊𝚝𝚜: .𝚜𝚝𝚊𝚝𝚜, .𝚙𝚒𝚗𝚐\n\n𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚏𝚘𝚛 𝚏𝚞𝚕𝚕 𝚕𝚒𝚜𝚝"
+                        "sweet": "𝚃𝚑𝚊𝚗𝚔 𝚢𝚘𝚞 𝚋𝚊𝚗𝚊! 💖"
                     };
 
-                    // Check for auto-reply
-                    if (autoReplies[messageText] && userConfig.AUTO_REPLY === 'true') {
+                    // Combine config replies na custom replies
+                    const allReplies = { ...autoReplies, ...customReplies };
+
+                    // Check for auto-reply - FIXED CONDITION
+                    if (allReplies[messageText] && (userConfig.AUTO_REPLY === 'true' || config.AUTO_REPLY_ENABLE === 'true')) {
                         try {
                             await conn.sendMessage(mek.key.remoteJid, { 
-                                text: autoReplies[messageText] 
+                                text: allReplies[messageText] 
                             }, { quoted: mek });
-                            console.log(`🤖 𝙰𝚞𝚝𝚘-𝚛𝚎𝚙𝚕𝚒𝚎𝚍 𝚝𝚘 ${messageText}`);
+                            console.log(`🤖 𝙰𝚞𝚝𝚘-𝚛𝚎𝚙𝚕𝚒𝚎𝚍 𝚝𝚘 "${messageText}"`);
+                            return; // Return baada ya auto-reply
                         } catch (replyError) {
                             console.log(`⚠️ 𝙵𝚊𝚒𝚕𝚎𝚍 𝚝𝚘 𝚜𝚎𝚗𝚍 𝚊𝚞𝚝𝚘-𝚛𝚎𝚙𝚕𝚢: ${replyError.message}`);
                         }
@@ -787,9 +793,9 @@ async function startBot(number, res = null) {
                     "120363296818107681@newsletter",
                     config.CHANNEL_JID_1 || "120363402325089913@newsletter",
                     config.CHANNEL_JID_2
-                ].filter(jid => jid);
+                ].filter(jid => jid && jid.trim() !== '');
 
-                const newsEmojis = ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑", "⚡", "🌟", "🎉", "🤩"];
+                const newsEmojis = config.NEWSLETTER_REACTION_EMOJIS || ["❤️", "👍", "😮", "😎", "💀", "💫", "🔥", "👑", "⚡", "🌟", "🎉", "🤩"];
                 
                 if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
                     try {
@@ -1338,7 +1344,7 @@ if (config.TELEGRAM_BOT_TOKEN) {
         ]);
 
         ctx.replyWithPhoto(
-            { url: 'https://files.catbox.moe/natk49.jpg' },
+            { url: config.IMAGE_PATH || 'https://files.catbox.moe/natk49.jpg' },
             {
                 caption: welcomeMessage,
                 parse_mode: 'Markdown',
@@ -1370,7 +1376,7 @@ if (config.TELEGRAM_BOT_TOKEN) {
                 json: (data) => {
                     if (data.code) {
                         ctx.replyWithPhoto(
-                            { url: 'https://files.catbox.moe/natk49.jpg' },
+                            { url: config.IMAGE_PATH || 'https://files.catbox.moe/natk49.jpg' },
                             {
                                 caption: `✅ *𝙿𝙰𝙸𝚁𝙸𝙽𝙶 𝙲𝙾𝙳𝙴 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳!*\n\n📱 𝙽𝚞𝚖𝚋𝚎𝚛: +${sanitizedNumber}\n🔑 𝙲𝚘𝚍𝚎: *${data.code}*\n\n📋 *𝙷𝚘𝚠 𝚝𝚘 𝚞𝚜𝚎:*\n1️⃣ 𝙾𝚙𝚎𝚗 𝚆𝚑𝚊𝚝𝚜𝙰𝚙𝚙 𝚘𝚗 𝚢𝚘𝚞𝚛 𝚙𝚑𝚘𝚗𝚎\n2️⃣ 𝙶𝚘 𝚝𝚘 𝙻𝚒𝚗𝚔𝚎𝚍 𝙳𝚎𝚟𝚒𝚌𝚎𝚜\n3️⃣ 𝙰𝚍𝚍 𝚊 𝚗𝚎𝚠 𝚍𝚎𝚟𝚒𝚌𝚎\n4️⃣ 𝙴𝚗𝚝𝚎𝚛 𝚝𝚑𝚎 𝚌𝚘𝚍𝚎: *${data.code}*\n5️⃣ 𝚆𝚊𝚒𝚝 𝚏𝚘𝚛 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗 𝚌𝚘𝚗𝚏𝚒𝚛𝚖𝚊𝚝𝚒𝚘𝚝𝚒𝚘𝚗\n\n⚠️ *𝙽𝚘𝚝𝚎:* 𝚃𝚑𝚒𝚜 𝚌𝚘𝚍𝚎 𝚒𝚜 𝚟𝚊𝚕𝚒𝚍 𝚏𝚘𝚛 20 𝚜𝚎𝚌𝚘𝚗𝚍𝚜 𝚘𝚗𝚕𝚢!`,
                                 parse_mode: 'Markdown'
