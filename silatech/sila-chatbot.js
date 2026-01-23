@@ -1,148 +1,186 @@
 const { cmd } = require('../momy');
 const axios = require('axios');
 
-// Storage for chatbot settings
-const chatbotState = {
-    global: true, // Global on/off for all chats
-    groups: {}, // Group-specific settings
-    inbox: {} // Private chat settings
+
+// State storage kwa kuhifadhi hali ya chatbot
+let chatbotState = {
+    enabled: true,
+    mode: 'both' // 'both', 'group', 'inbox'
 };
 
-// Store conversation context
-const conversationContext = {};
+// Define combined fakevCard 
+const fakevCard = {
+  key: {
+    fromMe: false,
+    participant: "0@s.whatsapp.net",
+    remoteJid: "status@broadcast"
+  },
+  message: {
+    contactMessage: {
+      displayName: "© 𝐒𝐈𝐋𝐀-𝐌𝐃",
+      vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:𝐒𝐈𝐋𝐀 𝐌𝐃 𝐁𝐎𝐓\nORG:𝐒𝐈𝐋𝐀-𝐌𝐃;\nTEL;type=CELL;type=VOICE;waid=255789661031:+255789661031\nEND:VCARD`
+    }
+  }
+};
+
+const getContextInfo = (m) => {
+    return {
+        mentionedJid: [m.sender],
+        forwardingScore: 999,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+            newsletterJid: '120363402325089913@newsletter',
+            newsletterName: '© 𝐒𝐈𝐋𝐀 𝐌𝐃',
+            serverMessageId: 143,
+        },
+    };
+};
 
 cmd({
     pattern: "chatbot",
-    alias: ["autobot", "ai-bot", "autoreply"],
-    desc: "Enable/disable AI chatbot",
-    category: "ai",
+    alias: ["ai", "bot"],
     react: "🤖",
+    desc: "Chatbot control settings",
+    category: "ai",
     filename: __filename
-}, async (conn, mek, m, { from, isGroup, reply, args, isCreator, sender }) => {
-    try {
-        const chatId = isGroup ? from : sender;
-        const action = args[0]?.toLowerCase();
-        
-        if (!action) {
-            const status = isGroup ? 
-                (chatbotState.groups[from] !== false ? 'ON' : 'OFF') :
-                (chatbotState.inbox[sender] !== false ? 'ON' : 'OFF');
-            
-            return reply(`Chatbot Status: ${status}\n\nUsage:\n.chatbot on - Turn on\n.chatbot off - Turn off`);
-        }
-        
-        if (action === 'on') {
-            if (isGroup) {
-                if (!isCreator) return reply("Only admin can enable chatbot in group");
-                chatbotState.groups[from] = true;
-                await reply("Chatbot enabled for this group");
-            } else {
-                chatbotState.inbox[sender] = true;
-                await reply("Chatbot enabled for your chat");
-            }
-            await m.react("✅");
-        } 
-        else if (action === 'off') {
-            if (isGroup) {
-                if (!isCreator) return reply("Only admin can disable chatbot in group");
-                chatbotState.groups[from] = false;
-                await reply("Chatbot disabled for this group");
-            } else {
-                chatbotState.inbox[sender] = false;
-                await reply("Chatbot disabled for your chat");
-            }
-            await m.react("⏸️");
-        }
-        else if (action === 'global' && isCreator) {
-            chatbotState.global = !chatbotState.global;
-            await reply(`Global chatbot ${chatbotState.global ? 'enabled' : 'disabled'}`);
-            await m.react("🌍");
-        }
-        else if (action === 'clear' && isCreator) {
-            conversationContext[chatId] = [];
-            await reply("Chat history cleared");
-            await m.react("🗑️");
-        }
-        else {
-            return reply("Invalid command\nUse: .chatbot on/off");
-        }
-        
-    } catch (e) {
-        console.error("Chatbot command error:", e);
-        await m.react("❌");
-        reply("Error processing chatbot command");
+},
+async(conn, mek, m, {from, prefix, l, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
+try{
+    if (!args[0]) {
+        return await conn.sendMessage(from, {
+            text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 𝐒𝐄𝐓𝐓𝐈𝐍𝐆𝐒 ━━━━━━━━
+┃ 🟢 Status: ${chatbotState.enabled ? 'ON' : 'OFF'}
+┃ 🌐 Mode: ${chatbotState.mode.toUpperCase()}
+┃ ━━━━━━━━━━━━━━━━━━━━━━
+┃ 𝐔𝐬𝐚𝐠𝐞:
+┃ • ${prefix}chatbot on - Enable chatbot
+┃ • ${prefix}chatbot off - Disable chatbot
+┃ • ${prefix}chatbot group - Groups only
+┃ • ${prefix}chatbot inbox - Inbox only
+┃ • ${prefix}chatbot both - Groups & Inbox
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+            contextInfo: getContextInfo({ sender: sender })
+        }, { quoted: fakevCard });
     }
+    
+    const action = args[0].toLowerCase();
+    
+    switch(action) {
+        case 'on':
+            chatbotState.enabled = true;
+            await conn.sendMessage(from, {
+                text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 ━━━━━━━━━━━━━━━
+┃ ✅ Chatbot has been ENABLED
+┃ Mode: ${chatbotState.mode.toUpperCase()}
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+            break;
+            
+        case 'off':
+            chatbotState.enabled = false;
+            await conn.sendMessage(from, {
+                text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 ━━━━━━━━━━━━━━━
+┃ 🔴 Chatbot has been DISABLED
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+            break;
+            
+        case 'group':
+            chatbotState.mode = 'group';
+            await conn.sendMessage(from, {
+                text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 ━━━━━━━━━━━━━━━
+┃ 📱 Mode set to GROUPS ONLY
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+            break;
+            
+        case 'inbox':
+            chatbotState.mode = 'inbox';
+            await conn.sendMessage(from, {
+                text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 ━━━━━━━━━━━━━━━
+┃ 💬 Mode set to INBOX ONLY
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+            break;
+            
+        case 'both':
+            chatbotState.mode = 'both';
+            await conn.sendMessage(from, {
+                text: `┏━❑ 𝐂𝐇𝐀𝐓𝐁𝐎𝐓 ━━━━━━━━━━━━━━━
+┃ 🌐 Mode set to GROUPS & INBOX
+┗━━━━━━━━━━━━━━━━━━━━━━━━`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+            break;
+            
+        default:
+            await conn.sendMessage(from, {
+                text: `❌ Invalid option. Use:\n• on\n• off\n• group\n• inbox\n• both`,
+                contextInfo: getContextInfo({ sender: sender })
+            }, { quoted: fakevCard });
+    }
+    
+} catch (e) {
+    await conn.sendMessage(from, {
+        text: `❌ Command failed`,
+        contextInfo: getContextInfo({ sender: sender })
+    }, { quoted: fakevCard });
+    l(e);
+}
 });
 
-// Function to check if chatbot should respond
-function shouldRespond(chatId, isGroup, sender) {
-    // Check global setting
-    if (!chatbotState.global) return false;
-    
-    // Check specific chat settings
-    if (isGroup) {
-        return chatbotState.groups[chatId] === true;
-    } else {
-        return chatbotState.inbox[sender] === true;
-    }
-}
-
-// Function to get AI response
-async function getAIResponse(message, chatId) {
+// Auto-reply handler kwa mazungumzo ya kawaida (sio command)
+// Huenda hii iwe katika main file yako au event handler
+module.exports.chatbotHandler = async (conn, message) => {
     try {
-        // Maintain conversation context
-        if (!conversationContext[chatId]) {
-            conversationContext[chatId] = [];
+        const { from, body, isGroup, sender } = message;
+        
+        // Angalia kama si command (haianzi na prefix)
+        if (body.startsWith('.')) return;
+        
+        // Angalia kama chatbot imewashwa
+        if (!chatbotState.enabled) return;
+        
+        // Angalia mode
+        if (chatbotState.mode === 'group' && !isGroup) return;
+        if (chatbotState.mode === 'inbox' && isGroup) return;
+        
+        // Kata nafasi mbele na nyuma ya message
+        const userMessage = body.trim();
+        if (!userMessage) return;
+        
+        // Toa baadhi ya maneno ambayo hatutaki kujibu
+        const ignoreWords = ['http://', 'https://', 'www.', '.com', '.net', '.org'];
+        if (ignoreWords.some(word => userMessage.toLowerCase().includes(word))) return;
+        
+        // Piga API ya GPT
+        const apiUrl = `https://api.yupra.my.id/api/ai/gpt5?text=${encodeURIComponent(userMessage)}`;
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            throw new Error(`API responded with status: ${response.status}`);
         }
         
-        // Add new message to context (keep last 5 messages)
-        conversationContext[chatId].push({ role: "user", content: message });
-        if (conversationContext[chatId].length > 5) {
-            conversationContext[chatId] = conversationContext[chatId].slice(-5);
+        const data = await response.json();
+        
+        if (data && data.result) {
+            // Tuma reply kwa kawaida kama mtu anavyoandika
+            await conn.sendMessage(from, { 
+                text: data.result 
+            }, { 
+                quoted: message 
+            });
         }
-        
-        const apiUrl = `https://api.yupra.my.id/api/ai/gpt5?q=${encodeURIComponent(message)}`;
-        const { data } = await axios.get(apiUrl, { timeout: 30000 });
-        
-        if (!data || !data.response) {
-            throw new Error("No response from AI");
-        }
-        
-        return data.response;
         
     } catch (error) {
-        console.error("AI Response Error:", error.message);
-        return "I'm here to help!";
-    }
-}
-
-// Export the message handler
-module.exports.chatbotHandler = async (conn, mek, m, { from, sender, isGroup, text, reply }) => {
-    try {
-        const chatId = isGroup ? from : sender;
-        
-        // Check if chatbot should respond
-        if (!shouldRespond(from, isGroup, sender)) return;
-        
-        // Don't respond to bot commands
-        if (text.startsWith('.')) return;
-        
-        // Don't respond to very short messages
-        if (text.trim().length < 2) return;
-        
-        // Don't respond to bot's own messages
-        if (mek.key.fromMe) return;
-        
-        // Get AI response
-        const response = await getAIResponse(text, chatId);
-        
-        // Send response
-        await conn.sendMessage(from, {
-            text: response,
-            mentions: isGroup ? [sender] : []
-        }, { quoted: mek });
-        
-    } catch (error) {
-        console.error("Chatbot handler error:", error);
+        console.error('Chatbot error:', error);
+        // Usitumie error message kwa user, achia tu ikose
     }
 };
+
+// Export state kwa ajili ya ku-access kutoka files nyingine
+module.exports.chatbotState = chatbotState;
