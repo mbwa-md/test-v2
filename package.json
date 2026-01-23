@@ -31,6 +31,7 @@
     "child_process": "^1.0.2",
     "denethdev-ytmp3": "1.0.3",
     "cheerio": "1.1.0",
+    "mumaker": "^2.0.0",
     "telegraf": "^4.12.2",
     "ruhend-scraper": "9.0.1",
     "yt-search": "2.12.1",
