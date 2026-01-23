@@ -43,7 +43,7 @@ async (conn, mek, m, { from, reply, sender, myquoted }) => {
 │ ⏱️ uptime: ${uptime()}
 ╰━━━━━━━━━━━━━━━━━━━━╯
 
-*available commands:*`;
+*📁 available commands:*\n`;
 
     // Grouping Categories
     let categories = {};
@@ -59,9 +59,10 @@ async (conn, mek, m, { from, reply, sender, myquoted }) => {
     // Loop through Categories
     for (let cat of sortedCats) {
       const catHeader = toUpper(cat);
-
-      menu += `\n\n╭━━【 ${catHeader} 】━━━━╮`;
-
+      
+      // Start category section
+      menu += `\n┏━❑ ${catHeader} ━━━━━━━━━\n`;
+      
       const cmds = categories[cat]
         .filter(c => c.pattern)
         .sort((a, b) => {
@@ -70,28 +71,22 @@ async (conn, mek, m, { from, reply, sender, myquoted }) => {
           return nameA.localeCompare(nameB);
         });
 
-      // Display commands in columns (2 per row)
-      for (let i = 0; i < cmds.length; i += 2) {
-        let row = "\n│ ";
-        const cmd1 = cmds[i];
-        if (cmd1) {
-          const cmdName = Array.isArray(cmd1.pattern) ? cmd1.pattern[0] : cmd1.pattern.split('|')[0];
-          row += `${prefix}${cmdName}`.padEnd(15);
-        }
+      // Display commands in vertical list format
+      cmds.forEach((cmd, index) => {
+        const cmdName = Array.isArray(cmd.pattern) ? cmd.pattern[0] : cmd.pattern.split('|')[0];
+        const isLast = index === cmds.length - 1;
         
-        const cmd2 = cmds[i + 1];
-        if (cmd2) {
-          const cmdName2 = Array.isArray(cmd2.pattern) ? cmd2.pattern[0] : cmd2.pattern.split('|')[0];
-          row += `${prefix}${cmdName2}`;
+        if (isLast) {
+          menu += `┃ ⤷ ${prefix}${cmdName}\n`;
+          menu += `┗━━━━━━━━━━━━━━━━━━━━\n`;
+        } else {
+          menu += `┃ ⤷ ${prefix}${cmdName}\n`;
         }
-        menu += row;
-      }
-
-      menu += `\n╰━━━━━━━━━━━━━━━━━━━━╯`;
+      });
     }
 
     // Footer
-    menu += `\n\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
+    menu += `\n> © 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`;
 
     // Send the Menu with image and context info
     await conn.sendMessage(from, {
