@@ -32,8 +32,8 @@ const getContextInfo = (sender) => {
 };
 
 cmd({
-    pattern: "fb",
-    alias: ["facebook", "fbdl"],
+    pattern: "fb2",
+    alias: ["facebook2", "fbdl2"],
     react: "🎥",
     desc: "Download Facebook video",
     category: "downloader",
